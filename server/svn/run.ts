@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { finishEntry, startEntry } from '../console-log.ts';
 
-const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
+/** Saída máxima aceita antes de matar o processo. */
+const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 export class SvnError extends Error {
   readonly exitCode: number | null;
@@ -13,20 +14,14 @@ export class SvnError extends Error {
   }
 }
 
-export interface RunOptions {
-  /** Saída máxima aceita antes de matar o processo. */
-  maxBytes?: number;
-}
-
 /**
  * Executa `svn <subcomando> --non-interactive ...` sem shell, com os argumentos em lista.
  * Rejeita com `SvnError` se o svn sair com código diferente de zero.
  */
-export function runSvnRaw(args: string[], options: RunOptions = {}): Promise<Buffer> {
+export function runSvnRaw(args: string[]): Promise<Buffer> {
   const [subcommand, ...rest] = args;
   if (!subcommand) throw new Error('subcomando svn ausente');
   const fullArgs = [subcommand, '--non-interactive', ...rest];
-  const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
   const entry = startEntry(fullArgs);
 
   return new Promise((resolve, reject) => {
@@ -38,7 +33,7 @@ export function runSvnRaw(args: string[], options: RunOptions = {}): Promise<Buf
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdoutBytes += chunk.length;
-      if (stdoutBytes > maxBytes) {
+      if (stdoutBytes > MAX_OUTPUT_BYTES) {
         overflow = true;
         child.kill();
         return;
@@ -61,7 +56,7 @@ export function runSvnRaw(args: string[], options: RunOptions = {}): Promise<Buf
       const err = Buffer.concat(stderr).toString('utf8');
       finishEntry(entry, { exitCode: code, stdout: out.toString('utf8'), stderr: err });
       if (overflow) {
-        reject(new SvnError(`saída do svn passou de ${maxBytes} bytes`, code));
+        reject(new SvnError(`saída do svn passou de ${MAX_OUTPUT_BYTES} bytes`, code));
       } else if (code !== 0) {
         reject(new SvnError(err.trim() || `svn saiu com código ${code}`, code));
       } else {
@@ -71,6 +66,6 @@ export function runSvnRaw(args: string[], options: RunOptions = {}): Promise<Buf
   });
 }
 
-export async function runSvn(args: string[], options?: RunOptions): Promise<string> {
-  return (await runSvnRaw(args, options)).toString('utf8');
+export async function runSvn(args: string[]): Promise<string> {
+  return (await runSvnRaw(args)).toString('utf8');
 }

@@ -1,6 +1,6 @@
 import type { DiffResponse, Eol } from '@shared/types.ts';
 import { FileDiff, Loader2 } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,7 @@ import { useDiff } from '@/lib/queries';
 import { useStoredState } from '@/lib/use-stored-state';
 import { cn, formatBytes } from '@/lib/utils';
 import { MergeEditor, type DiffMode } from './MergeEditor';
+import { Placeholder } from './Placeholder';
 
 export interface FileSelection {
   projectId: string;
@@ -39,14 +40,6 @@ function PropsDiff({ text, fill = false }: { text: string; fill?: boolean }) {
   );
 }
 
-function Message({ children }: { children: ReactNode }) {
-  return (
-    <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm">
-      {children}
-    </div>
-  );
-}
-
 function eolNotice(eol: { original: Eol; modified: Eol }): string | null {
   if (eol.original !== 'none' && eol.modified !== 'none' && eol.original !== eol.modified) {
     return `Fim de linha mudou: ${EOL_LABEL[eol.original]} → ${EOL_LABEL[eol.modified]}`;
@@ -71,25 +64,26 @@ function DiffBody({
   switch (diff.kind) {
     case 'too-large':
       return (
-        <Message>
+        <Placeholder>
           <p>
-            Arquivo grande ({formatBytes(Math.max(diff.originalSize, diff.modifiedSize))}). Mostrar
-            o diff pode deixar a tela lenta.
+            Arquivo grande ({formatBytes(Math.max(diff.originalSize ?? 0, diff.modifiedSize))}).
+            Mostrar o diff pode deixar a tela lenta.
           </p>
           <Button variant="outline" size="sm" onClick={onForce}>
             Mostrar mesmo assim
           </Button>
-        </Message>
+        </Placeholder>
       );
     case 'binary':
       return (
         <div className="flex h-full flex-col">
-          <Message>
+          <Placeholder>
             <p>Arquivo binário alterado.</p>
             <p className="font-mono text-xs">
-              base {formatBytes(diff.originalSize)} → local {formatBytes(diff.modifiedSize)}
+              {diff.originalSize !== null && `base ${formatBytes(diff.originalSize)} → `}local{' '}
+              {formatBytes(diff.modifiedSize)}
             </p>
-          </Message>
+          </Placeholder>
           {diff.propsDiff && <PropsDiff text={diff.propsDiff} />}
         </div>
       );
@@ -97,11 +91,11 @@ function DiffBody({
       return diff.propsDiff ? (
         <PropsDiff text={diff.propsDiff} fill />
       ) : (
-        <Message>
+        <Placeholder>
           {diff.item === 'unversioned'
             ? 'Pasta não versionada.'
             : 'Pasta sem mudanças de propriedade.'}
-        </Message>
+        </Placeholder>
       );
     case 'text': {
       const notice = eolNotice(diff.eol);
@@ -114,7 +108,7 @@ function DiffBody({
           )}
           <div className="min-h-0 flex-1">
             {sameContent ? (
-              <Message>Sem diferenças de conteúdo.</Message>
+              <Placeholder>Sem diferenças de conteúdo.</Placeholder>
             ) : (
               <MergeEditor
                 original={diff.original}
@@ -141,10 +135,10 @@ export function DiffPanel({ selection }: { selection: FileSelection | null }) {
 
   if (!selection) {
     return (
-      <Message>
+      <Placeholder>
         <FileDiff className="size-8 opacity-40" />
         Selecione um arquivo para ver o diff.
-      </Message>
+      </Placeholder>
     );
   }
 
@@ -184,13 +178,13 @@ export function DiffPanel({ selection }: { selection: FileSelection | null }) {
       </div>
       <div className="min-h-0 flex-1">
         {diff.isPending ? (
-          <Message>
+          <Placeholder>
             <Loader2 className="size-5 animate-spin" />
-          </Message>
+          </Placeholder>
         ) : diff.isError ? (
-          <Message>
+          <Placeholder>
             <span className="text-destructive">{diff.error.message}</span>
-          </Message>
+          </Placeholder>
         ) : (
           <DiffBody
             diff={diff.data}

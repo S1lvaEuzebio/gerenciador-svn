@@ -24,7 +24,8 @@ export const readOnlySchema = z.object({
   commit: z.boolean(),
 });
 
-export const configSchema = z.object({
+/** `looseObject`: chaves desconhecidas (de versões futuras, por exemplo) são preservadas ao salvar. */
+export const configSchema = z.looseObject({
   port: z.number().int().min(1024).max(65535).default(DEFAULT_PORT),
   roots: z.array(z.string()).default([]),
   groups: z.array(groupSchema).default([]),

@@ -43,6 +43,8 @@ export function useConsole(open: boolean) {
     queryFn: api.console,
     enabled: open,
     refetchInterval: open ? 1500 : false,
+    // continua atualizando com a janela sem foco (ex.: olhando o console enquanto usa o terminal)
+    refetchIntervalInBackground: true,
   });
 }
 

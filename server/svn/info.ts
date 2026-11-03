@@ -5,18 +5,15 @@ interface InfoXml {
   info?: {
     entry?: Array<{
       revision?: string;
-      url?: string;
       'relative-url'?: string;
-      repository?: { root?: string; uuid?: string };
+      repository?: { root?: string };
     }>;
   };
 }
 
 export interface WcInfo {
-  url: string;
   relativeUrl: string;
   repoRootUrl: string;
-  repoUuid: string;
   revision: number;
 }
 
@@ -33,10 +30,8 @@ export async function svnInfo(path: string): Promise<WcInfo> {
   const entry = parseSvnXml<InfoXml>(xml).info?.entry?.[0];
   if (!entry) throw new Error(`svn info sem resultado para ${path}`);
   return {
-    url: entry.url ?? '',
     relativeUrl: decodeUrlPath(entry['relative-url'] ?? ''),
     repoRootUrl: entry.repository?.root ?? '',
-    repoUuid: entry.repository?.uuid ?? '',
     revision: Number(entry.revision ?? 0),
   };
 }

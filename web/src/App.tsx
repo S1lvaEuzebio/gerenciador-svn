@@ -1,11 +1,14 @@
+import { LOCK_LABELS } from '@shared/labels.ts';
+import type { ReadOnlyConfig } from '@shared/schema.ts';
 import type { ProjectStatus } from '@shared/types.ts';
 import { useIsFetching } from '@tanstack/react-query';
 import { FolderCog, Lock, RefreshCw, Settings, SquareTerminal } from 'lucide-react';
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState } from 'react';
 import { ConsolePanel } from '@/components/ConsolePanel';
 import { DiffPanel, type FileSelection } from '@/components/DiffPanel';
 import { FileList } from '@/components/FileList';
 import { GroupsDialog } from '@/components/GroupsDialog';
+import { Placeholder } from '@/components/Placeholder';
 import { SettingsDialog, type SettingsTab } from '@/components/SettingsDialog';
 import { ALL, Sidebar, UNGROUPED, type GroupFilter } from '@/components/Sidebar';
 import { Button } from '@/components/ui/button';
@@ -13,15 +16,7 @@ import { keys, useConfig, useProjects, useRefreshAll, useStatus } from '@/lib/qu
 import { useStoredState } from '@/lib/use-stored-state';
 import { cn } from '@/lib/utils';
 
-const anyString = (value: string): value is string => value !== '';
-
-function Centered({ children }: { children: ReactNode }) {
-  return (
-    <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm">
-      {children}
-    </div>
-  );
-}
+const isNonEmpty = (value: string): value is string => value !== '';
 
 export function App() {
   const config = useConfig();
@@ -31,7 +26,11 @@ export function App() {
   const refreshing =
     useIsFetching({ queryKey: keys.status }) + useIsFetching({ queryKey: keys.projects }) > 0;
 
-  const [groupFilter, setGroupFilter] = useStoredState<GroupFilter>('group-filter', ALL, anyString);
+  const [groupFilter, setGroupFilter] = useStoredState<GroupFilter>(
+    'group-filter',
+    ALL,
+    isNonEmpty,
+  );
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selection, setSelection] = useState<FileSelection | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
@@ -71,13 +70,15 @@ export function App() {
 
   const readOnly = config.data?.config.readOnly;
   const locks = readOnly
-    ? [readOnly.local && 'operações locais', readOnly.commit && 'commit'].filter(Boolean)
+    ? (Object.keys(LOCK_LABELS) as (keyof ReadOnlyConfig)[])
+        .filter((kind) => readOnly[kind])
+        .map((kind) => LOCK_LABELS[kind])
     : [];
 
   if (config.isError) {
-    return <Centered>Não foi possível falar com o servidor: {config.error.message}</Centered>;
+    return <Placeholder>Não foi possível falar com o servidor: {config.error.message}</Placeholder>;
   }
-  if (!config.data) return <Centered>Carregando…</Centered>;
+  if (!config.data) return <Placeholder>Carregando…</Placeholder>;
 
   const noRoots = config.data.config.roots.length === 0;
 
@@ -120,11 +121,11 @@ export function App() {
 
       <main className="min-h-0 flex-1">
         {noRoots ? (
-          <Centered>
+          <Placeholder>
             <FolderCog className="size-8 opacity-40" />
             <p>Nenhuma pasta raiz configurada.</p>
             <Button onClick={() => openSettings('roots')}>Configurar pastas</Button>
-          </Centered>
+          </Placeholder>
         ) : (
           <div className="grid h-full grid-cols-[260px_minmax(280px,380px)_minmax(0,1fr)]">
             <Sidebar

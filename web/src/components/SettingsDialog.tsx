@@ -1,3 +1,4 @@
+import { LOCK_LABELS } from '@shared/labels.ts';
 import type { AppConfig, ReadOnlyConfig } from '@shared/schema.ts';
 import type { Project } from '@shared/types.ts';
 import { Lock, LockOpen } from 'lucide-react';
@@ -87,7 +88,7 @@ function IgnoreTab({ config, projects }: { config: AppConfig; projects: Project[
     <div className="space-y-4">
       <p className="text-muted-foreground text-sm">
         Um padrão por linha. Sem <code>/</code> (ex.: <code>.classpath</code>) vale em qualquer
-        pasta; com <code>/</code> (ex.: <code>web/WEB-INF/classes/</code>) parte da raiz do projeto.
+        pasta; com <code>/</code> (ex.: <code>build/classes/</code>) parte da raiz do projeto.
         Arquivos ignorados aparecem recolhidos e nunca entram em commit.
       </p>
       <div className="space-y-1.5">
@@ -127,15 +128,9 @@ function IgnoreTab({ config, projects }: { config: AppConfig; projects: Project[
   );
 }
 
-const LOCK_INFO: Record<keyof ReadOnlyConfig, { title: string; description: string }> = {
-  local: {
-    title: 'Operações locais',
-    description: 'update, resolver conflito, revert e cleanup: só afetam a sua cópia.',
-  },
-  commit: {
-    title: 'Commit',
-    description: 'envia mudanças para o repositório e afeta todo mundo.',
-  },
+const LOCK_DESCRIPTIONS: Record<keyof ReadOnlyConfig, string> = {
+  local: 'update, resolver conflito, revert e cleanup: só afetam a sua cópia.',
+  commit: 'envia mudanças para o repositório e afeta todo mundo.',
 };
 
 function ReadOnlyTab({ config }: { config: AppConfig }) {
@@ -153,7 +148,7 @@ function ReadOnlyTab({ config }: { config: AppConfig }) {
         Com a chave ligada, o servidor recusa a operação. Destrave primeiro o que só afeta a sua
         máquina e deixe o commit por último.
       </p>
-      {(Object.keys(LOCK_INFO) as (keyof ReadOnlyConfig)[]).map((kind) => {
+      {(Object.keys(LOCK_LABELS) as (keyof ReadOnlyConfig)[]).map((kind) => {
         const locked = config.readOnly[kind];
         return (
           <div key={kind} className="rounded-md border p-3">
@@ -164,13 +159,11 @@ function ReadOnlyTab({ config }: { config: AppConfig }) {
                 <LockOpen className="text-muted-foreground size-4" />
               )}
               <div className="flex-1">
-                <div className="text-sm font-medium">
-                  Travar {LOCK_INFO[kind].title.toLowerCase()}
-                </div>
-                <div className="text-muted-foreground text-xs">{LOCK_INFO[kind].description}</div>
+                <div className="text-sm font-medium">Travar {LOCK_LABELS[kind]}</div>
+                <div className="text-muted-foreground text-xs">{LOCK_DESCRIPTIONS[kind]}</div>
               </div>
               <Switch
-                aria-label={`Travar ${LOCK_INFO[kind].title.toLowerCase()}`}
+                aria-label={`Travar ${LOCK_LABELS[kind]}`}
                 checked={locked}
                 disabled={save.isPending}
                 onCheckedChange={(checked) => (checked ? setLock(kind, true) : setConfirming(kind))}
@@ -179,8 +172,8 @@ function ReadOnlyTab({ config }: { config: AppConfig }) {
             {confirming === kind && (
               <div className="bg-warning text-warning-foreground mt-3 flex flex-wrap items-center gap-2 rounded-md p-2 text-sm">
                 <span className="flex-1">
-                  Destravar {LOCK_INFO[kind].title.toLowerCase()}? O app vai poder executar essas
-                  operações (sempre com confirmação).
+                  Destravar {LOCK_LABELS[kind]}? O app vai poder executar essas operações (sempre
+                  com confirmação).
                 </span>
                 <Button size="xs" variant="outline" onClick={() => setConfirming(null)}>
                   Cancelar

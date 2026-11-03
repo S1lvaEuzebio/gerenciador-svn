@@ -36,7 +36,7 @@ export function GroupsDialog({ open, onOpenChange, groups, projects }: GroupsDia
   const [newName, setNewName] = useState('');
   const selected = draft.find((g) => g.id === selectedId) ?? null;
 
-  const commit = (change: (current: Group[]) => Group[]) => {
+  const applyChange = (change: (current: Group[]) => Group[]) => {
     const next = change(latest.current);
     latest.current = next;
     setDraft(next);
@@ -47,18 +47,18 @@ export function GroupsDialog({ open, onOpenChange, groups, projects }: GroupsDia
     const name = newName.trim();
     if (!name) return;
     const group: Group = { id: crypto.randomUUID(), name, projects: [] };
-    commit((current) => [...current, group]);
+    applyChange((current) => [...current, group]);
     setSelectedId(group.id);
     setNewName('');
   };
 
   const update = (id: string, change: (group: Group) => Group) => {
-    commit((current) => current.map((g) => (g.id === id ? change(g) : g)));
+    applyChange((current) => current.map((g) => (g.id === id ? change(g) : g)));
   };
 
   const remove = () => {
     if (!selected) return;
-    commit((current) => current.filter((g) => g.id !== selected.id));
+    applyChange((current) => current.filter((g) => g.id !== selected.id));
     setSelectedId(null);
   };
 

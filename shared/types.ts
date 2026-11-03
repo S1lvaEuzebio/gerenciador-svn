@@ -75,8 +75,9 @@ export type DiffResponse =
       eol: { original: Eol; modified: Eol };
       propsDiff?: string;
     }
-  | { kind: 'binary'; originalSize: number; modifiedSize: number; propsDiff?: string }
-  | { kind: 'too-large'; originalSize: number; modifiedSize: number }
+  /** `originalSize` é `null` quando a base não chegou a ser lida. */
+  | { kind: 'binary'; originalSize: number | null; modifiedSize: number; propsDiff?: string }
+  | { kind: 'too-large'; originalSize: number | null; modifiedSize: number }
   | { kind: 'directory'; item: ItemStatus; propsDiff?: string };
 
 export interface ConsoleEntry {
@@ -93,8 +94,4 @@ export interface ConsoleEntry {
 export interface ConfigResponse {
   config: AppConfig;
   configPath: string;
-}
-
-export interface ApiError {
-  error: string;
 }

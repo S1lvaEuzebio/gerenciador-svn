@@ -13,6 +13,7 @@ import type {
 import { cleanPatterns, configPath, getConfig, updateConfig } from './config.ts';
 import { clearEntries, listEntries } from './console-log.ts';
 import { localDiff } from './diff.ts';
+import { HttpError } from './http-error.ts';
 import { projectStatus } from './local-status.ts';
 import { discoverProjects, knownProjects, requireProject } from './projects.ts';
 import { localOnly } from './security.ts';
@@ -114,7 +115,13 @@ export function createApp(options: { port: number; dev: boolean }) {
       res.status(400).json({ error: z.prettifyError(error) });
       return;
     }
-    const status = typeof error?.status === 'number' ? error.status : 500;
+    // Erros do próprio Express (ex.: JSON malformado no body-parser) também trazem `status`.
+    const status =
+      error instanceof HttpError
+        ? error.status
+        : typeof error?.status === 'number'
+          ? error.status
+          : 500;
     res.status(status).json({ error: error instanceof Error ? error.message : String(error) });
   };
   app.use(onError);

@@ -4,7 +4,7 @@ import type { AppConfig } from '../shared/schema.ts';
 /**
  * Converte um padrão no estilo `.gitignore` em globs relativos à raiz do projeto:
  * - sem `/` (ex.: `.classpath`) casa em qualquer profundidade;
- * - com `/` no meio ou no início (ex.: `web/WEB-INF/classes/`) é ancorado na raiz;
+ * - com `/` no meio ou no início (ex.: `build/classes/`) é ancorado na raiz;
  * - casar uma pasta inclui tudo que está dentro dela.
  */
 function toGlobs(pattern: string): string[] {

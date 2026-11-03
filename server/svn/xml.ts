@@ -1,6 +1,6 @@
 import { XMLParser } from 'fast-xml-parser';
 
-const ARRAY_TAGS = new Set(['entry', 'target', 'logentry', 'path']);
+const ARRAY_TAGS = new Set(['entry', 'target']);
 
 const parser = new XMLParser({
   ignoreAttributes: false,

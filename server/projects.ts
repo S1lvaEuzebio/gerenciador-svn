@@ -2,6 +2,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { Project, ProjectsResponse, RootError } from '../shared/types.ts';
 import { resolvedRoots } from './config.ts';
+import { HttpError } from './http-error.ts';
 import { svnInfo } from './svn/info.ts';
 
 let cache = new Map<string, Project>();
@@ -61,17 +62,21 @@ export async function discoverProjects(): Promise<ProjectsResponse> {
   return { projects, errors };
 }
 
+async function ensureDiscovered(): Promise<void> {
+  if (cache.size === 0) await discoverProjects();
+}
+
 /** Projetos da última descoberta; descobre de novo se ainda não houve nenhuma. */
 export async function knownProjects(): Promise<Project[]> {
-  if (cache.size === 0) await discoverProjects();
+  await ensureDiscovered();
   return [...cache.values()];
 }
 
 /** Só aceita ids de projetos descobertos: o svn nunca roda em caminho arbitrário. */
 export async function requireProject(id: string): Promise<Project> {
-  if (cache.size === 0) await discoverProjects();
+  await ensureDiscovered();
   const project = cache.get(id);
-  if (!project) throw Object.assign(new Error('projeto desconhecido'), { status: 404 });
+  if (!project) throw new HttpError(404, 'projeto desconhecido');
   return project;
 }
 
@@ -80,7 +85,7 @@ export function resolveInProject(project: Project, relativePath: string): string
   const absolute = resolve(project.id, relativePath);
   const rel = relative(project.id, absolute);
   if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-    throw Object.assign(new Error('caminho fora do projeto'), { status: 400 });
+    throw new HttpError(400, 'caminho fora do projeto');
   }
   return absolute;
 }

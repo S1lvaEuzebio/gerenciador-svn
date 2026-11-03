@@ -83,7 +83,7 @@ Variáveis de ambiente:
 Um padrão por linha, no estilo do `.gitignore`:
 
 - sem `/` (ex.: `.classpath`): casa em qualquer pasta do projeto;
-- com `/` (ex.: `web/WEB-INF/classes/`): parte da raiz do projeto;
+- com `/` (ex.: `build/classes/`): parte da raiz do projeto;
 - casar uma pasta inclui tudo que está dentro dela.
 
 Servem também para arquivos versionados, que o `svn:ignore` não cobre.

@@ -27,9 +27,13 @@ async function save(config: AppConfig): Promise<void> {
   await rename(tmp, configPath);
 }
 
-/** Lê a configuração do disco; na primeira execução grava os valores padrão. */
+/**
+ * Lê a configuração do disco. Só grava na primeira execução (arquivo inexistente); depois disso
+ * o arquivo só muda quando algo é salvo pela tela.
+ */
 export async function loadConfig(): Promise<AppConfig> {
-  let raw: unknown;
+  let raw: unknown = {};
+  let firstRun = false;
   try {
     raw = JSON.parse(await readFile(configPath, 'utf8'));
   } catch (error) {
@@ -38,14 +42,14 @@ export async function loadConfig(): Promise<AppConfig> {
         cause: error,
       });
     }
-    raw = {};
+    firstRun = true;
   }
   const parsed = configSchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`configuração inválida em ${configPath}: ${parsed.error.message}`);
   }
   current = parsed.data;
-  await save(current);
+  if (firstRun) await save(current);
   return current;
 }
 
@@ -62,6 +66,6 @@ export async function updateConfig(patch: Partial<AppConfig>): Promise<AppConfig
 }
 
 /** Raízes com `~` expandido e caminho absoluto. */
-export function resolvedRoots(config: AppConfig = getConfig()): string[] {
-  return config.roots.map((root) => resolve(expandHome(root)));
+export function resolvedRoots(): string[] {
+  return getConfig().roots.map((root) => resolve(expandHome(root)));
 }
