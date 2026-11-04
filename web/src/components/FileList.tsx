@@ -11,7 +11,7 @@ import { displayPath, incomingLabel, statusLabel, type StatusLabel } from '@/lib
 import { cn } from '@/lib/utils';
 import type { FileSelection } from './DiffPanel';
 
-export type FileTab = 'local' | 'incoming';
+export type FileTab = FileSelection['source'];
 
 interface FileListProps {
   projects: Project[];

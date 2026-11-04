@@ -1,11 +1,9 @@
-import type { ConflictSegment, Eol, MergeChoice } from '@shared/types.ts';
+import type { ConflictHunk, ConflictSegment, Eol, MergeChoice } from '@shared/types.ts';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-
-type Conflict = Extract<ConflictSegment, { kind: 'conflict' }>;
 
 const CONTEXT_LINES = 3;
 
@@ -69,7 +67,7 @@ function ConflictCard({
   theirsRevision,
   disabled,
 }: {
-  conflict: Conflict;
+  conflict: ConflictHunk;
   index: number;
   total: number;
   choice: MergeChoice | null;

@@ -31,7 +31,7 @@ import {
 } from '@/lib/queries';
 import { isConflict } from '@/lib/status';
 import { useStoredState } from '@/lib/use-stored-state';
-import { cn } from '@/lib/utils';
+import { cn, projectCount } from '@/lib/utils';
 
 const isNonEmpty = (value: string): value is string => value !== '';
 const isFileTab = (value: string): value is FileTab => value === 'local' || value === 'incoming';
@@ -101,14 +101,13 @@ export function App() {
 
   // Update vale para o projeto selecionado ou, sem seleção, para todos os projetos visíveis.
   const scopeProject = listedProjects.length === 1 && selectedProject ? listedProjects[0] : null;
-  const plural = (n: number) => `${n} ${n === 1 ? 'projeto' : 'projetos'}`;
   const scopeLabel = scopeProject
     ? scopeProject.name
     : activeFilter === ALL
-      ? `todos (${plural(visibleProjects.length)})`
+      ? `todos (${projectCount(visibleProjects.length)})`
       : activeFilter === UNGROUPED
-        ? `sem grupo (${plural(visibleProjects.length)})`
-        : `${groups.find((g) => g.id === activeFilter)?.name} (${plural(visibleProjects.length)})`;
+        ? `sem grupo (${projectCount(visibleProjects.length)})`
+        : `${groups.find((g) => g.id === activeFilter)?.name} (${projectCount(visibleProjects.length)})`;
   const incomingInScope = listedProjects.reduce(
     (sum, p) => sum + (remoteStatuses.get(p.id)?.incoming.length ?? 0),
     0,

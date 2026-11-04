@@ -9,7 +9,8 @@ export const keys = {
   status: ['status'] as const,
   remoteStatus: ['remote-status'] as const,
   diff: (request: DiffRequest) => ['diff', request] as const,
-  conflict: (project: string, path: string) => ['conflict', project, path] as const,
+  conflict: (project: string, path: string, force: boolean) =>
+    ['conflict', project, path, force] as const,
   updatePreview: (projects: string[]) => ['update-preview', projects] as const,
   operation: (id: number) => ['operation', id] as const,
   console: ['console'] as const,
@@ -55,10 +56,10 @@ export function useDiff(request: DiffRequest | null) {
   });
 }
 
-export function useConflict(project: string, path: string) {
+export function useConflict(project: string, path: string, force: boolean) {
   return useQuery({
-    queryKey: keys.conflict(project, path),
-    queryFn: () => api.conflict(project, path),
+    queryKey: keys.conflict(project, path, force),
+    queryFn: () => api.conflict(project, path, force),
   });
 }
 
@@ -95,28 +96,27 @@ export function useConsole(open: boolean) {
   });
 }
 
+/** O que muda quando a cópia local muda: status local, diffs e detalhes de conflito. */
+const LOCAL_KEYS = [keys.status, ['diff'], ['conflict']];
+
 /** Rodescobre os projetos e só depois refaz os status, que usam a lista descoberta. */
 export function useRefreshAll() {
   const queryClient = useQueryClient();
   return async () => {
     await queryClient.refetchQueries({ queryKey: keys.projects });
     await Promise.all(
-      [keys.status, keys.remoteStatus, ['diff'], ['conflict']].map((queryKey) =>
+      [...LOCAL_KEYS, keys.remoteStatus].map((queryKey) =>
         queryClient.invalidateQueries({ queryKey }),
       ),
     );
   };
 }
 
-/** Depois de resolver um conflito: status local, diffs e detalhes do conflito mudaram. */
+/** Depois de resolver um conflito, que só mexe na cópia local. */
 function useAfterLocalWrite() {
   const queryClient = useQueryClient();
   return () =>
-    Promise.all(
-      [keys.status, ['diff'], ['conflict']].map((queryKey) =>
-        queryClient.invalidateQueries({ queryKey }),
-      ),
-    );
+    Promise.all(LOCAL_KEYS.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
 }
 
 export function useResolve(project: string, path: string) {

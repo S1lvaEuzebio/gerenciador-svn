@@ -13,7 +13,7 @@ import {
 import { api } from '@/lib/api';
 import { useOperation, useRefreshAll, useUpdatePreview } from '@/lib/queries';
 import { displayPath, incomingLabel } from '@/lib/status';
-import { cn } from '@/lib/utils';
+import { cn, projectCount } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
 import { Placeholder } from './Placeholder';
 
@@ -80,6 +80,12 @@ function ProjectPreview({ project, item }: { project: Project; item: UpdatePrevi
             </li>
           ))}
         </ul>
+      )}
+      {item.revisionsTruncated && (
+        <p className="text-muted-foreground text-xs">
+          Lista cortada: mostra só as revisões mais recentes. O update traz todas até r
+          {item.headRevision}.
+        </p>
       )}
       <ul className="max-h-40 overflow-y-auto">
         {item.incoming.map((change) => {
@@ -259,7 +265,7 @@ export function UpdateDialog({
               >
                 {start.isPending
                   ? 'Iniciando…'
-                  : `Fazer update (${withChanges.length} ${withChanges.length === 1 ? 'projeto' : 'projetos'})`}
+                  : `Fazer update (${projectCount(withChanges.length)})`}
               </Button>
             </>
           ) : (

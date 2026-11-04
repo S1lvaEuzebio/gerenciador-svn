@@ -1,4 +1,6 @@
-import type { AppConfig } from './schema.ts';
+import type { AppConfig, DiffCompare, MergeChoice, ResolveAccept } from './schema.ts';
+
+export type { DiffCompare, MergeChoice, ResolveAccept };
 
 /** Valores de `wc-status/@item` do `svn status --xml`. */
 export type ItemStatus =
@@ -106,8 +108,10 @@ export interface UpdatePreviewProject {
   fromRevision: number;
   headRevision: number | null;
   incoming: IncomingChange[];
-  /** Revisões do servidor que mexem nos caminhos que vão chegar. */
+  /** Revisões do servidor que mexem nos caminhos que vão chegar, da mais antiga à mais nova. */
   revisions: RevisionSummary[];
+  /** A lista ficou só com as revisões mais recentes; as mais antigas foram cortadas. */
+  revisionsTruncated: boolean;
   /** Comando exato do update; `null` quando não há nada para receber. */
   command: string | null;
   error?: string;
@@ -135,12 +139,6 @@ export interface Operation {
   steps: OperationStep[];
 }
 
-/**
- * Diff a mostrar: `local` = minhas mudanças (BASE × cópia local), `incoming` = o que vai chegar
- * (BASE × servidor), `local-head` = cópia local comparada com o servidor.
- */
-export type DiffCompare = 'local' | 'incoming' | 'local-head';
-
 export type Eol = 'crlf' | 'lf' | 'mixed' | 'none';
 
 export type DiffResponse =
@@ -156,9 +154,6 @@ export type DiffResponse =
   | { kind: 'too-large'; originalSize: number | null; modifiedSize: number }
   | { kind: 'directory'; item: ItemStatus; propsDiff?: string };
 
-/** Opções de `svn resolve --accept` oferecidas na tela. */
-export type ResolveAccept = 'mine-conflict' | 'theirs-conflict' | 'mine-full' | 'theirs-full';
-
 /** Trecho do arquivo em conflito, lido dos marcadores que o svn grava. */
 export type ConflictSegment =
   | { kind: 'text'; text: string }
@@ -170,8 +165,7 @@ export type ConflictSegment =
       theirs: string;
     };
 
-/** Escolha para um trecho em conflito no editor de mesclagem. */
-export type MergeChoice = { pick: 'mine' | 'theirs' | 'both' } | { edit: string };
+export type ConflictHunk = Extract<ConflictSegment, { kind: 'conflict' }>;
 
 export interface TextConflict {
   binary: boolean;
@@ -179,6 +173,8 @@ export interface TextConflict {
   baseRevision: number | null;
   theirsRevision: number | null;
   sizes: { mine: number | null; base: number | null; theirs: number | null };
+  /** Maior que 1 MB: comparação e editor só abrem depois de confirmar. */
+  tooLarge: boolean;
   /** Versão local (`.mine`) e do servidor (`.rNEW`) para comparar; `null` se binário ou grande. */
   compare: { mine: string; theirs: string } | null;
   /** Dados do editor de mesclagem; `null` quando não dá para mesclar no app. */
@@ -193,7 +189,7 @@ export interface TreeConflict {
   action: string;
   /** O que havia na cópia local (`edit`, `delete`, `missing`, `obstructed`, ...). */
   reason: string;
-  kind: string;
+  kind: NodeKind;
   /** Comandos sugeridos para resolver no terminal (o app não resolve conflito de árvore). */
   commands: string[];
 }

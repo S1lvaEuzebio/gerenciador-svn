@@ -2,7 +2,14 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import express, { type ErrorRequestHandler } from 'express';
 import { z } from 'zod';
-import { groupSchema, ignoreSchema, readOnlySchema } from '../shared/schema.ts';
+import {
+  diffCompareSchema,
+  groupSchema,
+  ignoreSchema,
+  mergeChoiceSchema,
+  readOnlySchema,
+  resolveAcceptSchema,
+} from '../shared/schema.ts';
 import type {
   CommandResult,
   ConfigResponse,
@@ -30,32 +37,27 @@ import { startUpdate, updatePreview } from './update.ts';
 
 const webDist = fileURLToPath(new URL('../dist/web', import.meta.url));
 
-const revision = z.coerce.number().int().positive();
+const positiveInt = z.coerce.number().int().positive();
 
 const fileQuery = z.object({ project: z.string().min(1), path: z.string() });
 
 const diffQuery = fileQuery.extend({
-  compare: z.enum(['local', 'incoming', 'local-head']).default('local'),
-  rev: revision.optional(),
+  compare: diffCompareSchema.default('local'),
+  rev: positiveInt.optional(),
   force: z.enum(['0', '1']).optional(),
 });
 
 const updateBody = z.object({
-  targets: z.array(z.object({ projectId: z.string().min(1), revision })).min(1),
+  targets: z.array(z.object({ projectId: z.string().min(1), revision: positiveInt })).min(1),
 });
 
 const resolveBody = fileQuery.extend({
-  accept: z.enum(['mine-conflict', 'theirs-conflict', 'mine-full', 'theirs-full']),
+  accept: resolveAcceptSchema,
 });
 
 const mergeBody = fileQuery.extend({
   fingerprint: z.string().min(1),
-  choices: z.array(
-    z.union([
-      z.object({ pick: z.enum(['mine', 'theirs', 'both']) }),
-      z.object({ edit: z.string() }),
-    ]),
-  ),
+  choices: z.array(mergeChoiceSchema),
 });
 
 function configResponse(): ConfigResponse {
@@ -151,13 +153,14 @@ export function createApp(options: { port: number; dev: boolean }) {
   });
 
   api.get('/operations/:id', (req, res) => {
-    res.json(getOperation(revision.parse(req.params.id)) satisfies Operation);
+    res.json(getOperation(positiveInt.parse(req.params.id)) satisfies Operation);
   });
 
   api.get('/conflict', async (req, res) => {
-    const query = fileQuery.parse(req.query);
+    const query = fileQuery.extend({ force: z.enum(['0', '1']).optional() }).parse(req.query);
     const project = await requireProject(query.project);
-    res.json((await conflictDetails(project, query.path)) satisfies ConflictDetails);
+    const details = await conflictDetails(project, query.path, query.force === '1');
+    res.json(details satisfies ConflictDetails);
   });
 
   api.post('/conflict/resolve', requireUnlocked('local'), async (req, res) => {

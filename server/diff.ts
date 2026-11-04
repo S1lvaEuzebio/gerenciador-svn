@@ -3,6 +3,7 @@ import type { DiffCompare, DiffResponse, Eol, ItemStatus, Project } from '../sha
 import { HttpError } from './http-error.ts';
 import { repoUrl, resolveInProject } from './projects.ts';
 import { svnInfo } from './svn/info.ts';
+import { svnFileSize } from './svn/list.ts';
 import { runSvn, runSvnRaw, SvnError } from './svn/run.ts';
 import { svnStatus } from './svn/status.ts';
 
@@ -40,9 +41,14 @@ async function readWorking(path: string, isLink: boolean): Promise<Buffer> {
   return isLink ? Buffer.from(`link ${await readlink(path)}`) : readFile(path);
 }
 
-export function detectEol(text: string): Eol {
+/** Quantas quebras de linha CRLF e LF (sozinho) o texto tem. */
+export function countEols(text: string): { crlf: number; lf: number } {
   const crlf = (text.match(/\r\n/g) ?? []).length;
-  const lf = (text.match(/\n/g) ?? []).length - crlf;
+  return { crlf, lf: (text.match(/\n/g) ?? []).length - crlf };
+}
+
+export function detectEol(text: string): Eol {
+  const { crlf, lf } = countEols(text);
   if (crlf === 0 && lf === 0) return 'none';
   if (crlf > 0 && lf > 0) return 'mixed';
   return crlf > 0 ? 'crlf' : 'lf';
@@ -147,6 +153,17 @@ export async function fileDiff(
     }
     if (!force && workingSize > MAX_DIFF_BYTES) {
       return { kind: 'too-large', originalSize: null, modifiedSize: workingSize };
+    }
+  }
+
+  // O lado do servidor tem o tamanho conferido antes de baixar: arquivo grande pede confirmação
+  // sem trazer o conteúdo pela rede.
+  if (!force && (left === 'repo' || right === 'repo')) {
+    const repoSize = (await svnFileSize(url!)) ?? 0;
+    if (repoSize > MAX_DIFF_BYTES) {
+      return left === 'repo'
+        ? { kind: 'too-large', originalSize: repoSize, modifiedSize: workingSize }
+        : { kind: 'too-large', originalSize: null, modifiedSize: repoSize };
     }
   }
 

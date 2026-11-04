@@ -1,4 +1,4 @@
-import type { NodeKind } from '../../shared/types.ts';
+import type { NodeKind, TreeConflict } from '../../shared/types.ts';
 import { runSvn } from './run.ts';
 import { parseSvnXml } from './xml.ts';
 
@@ -29,7 +29,8 @@ interface InfoXml {
   };
 }
 
-export interface WcInfo {
+/** Dados de um nó, da working copy ou do repositório. */
+export interface NodeInfo {
   kind: NodeKind;
   relativeUrl: string;
   repoRootUrl: string;
@@ -53,8 +54,11 @@ export interface ConflictFiles {
 
 export interface ConflictInfo {
   conflicts: ConflictFiles[];
-  tree?: { operation: string; action: string; reason: string; kind: string };
+  tree?: Omit<TreeConflict, 'commands'>;
 }
+
+const toNodeKind = (kind: string | undefined): NodeKind =>
+  kind === 'dir' || kind === 'file' ? kind : 'unknown';
 
 function decodeUrlPath(value: string): string {
   try {
@@ -72,10 +76,10 @@ async function infoEntry(path: string) {
 }
 
 /** `path` pode ser um caminho da working copy ou uma URL com revisão (`url@123`). */
-export async function svnInfo(path: string): Promise<WcInfo> {
+export async function svnInfo(path: string): Promise<NodeInfo> {
   const entry = await infoEntry(path);
   return {
-    kind: entry.kind === 'dir' || entry.kind === 'file' ? entry.kind : 'unknown',
+    kind: toNodeKind(entry.kind),
     relativeUrl: decodeUrlPath(entry['relative-url'] ?? ''),
     repoRootUrl: entry.repository?.root ?? '',
     revision: Number(entry.revision ?? 0),
@@ -106,7 +110,7 @@ export async function svnConflictInfo(path: string): Promise<ConflictInfo> {
       operation: tree.operation ?? '',
       action: tree.action ?? '',
       reason: tree.reason ?? '',
-      kind: tree.kind ?? '',
+      kind: toNodeKind(tree.kind),
     },
   };
 }

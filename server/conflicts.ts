@@ -3,15 +3,16 @@ import { readFile, stat, writeFile } from 'node:fs/promises';
 import type {
   CommandResult,
   ConflictDetails,
+  ConflictHunk,
   ConflictSegment,
   MergeChoice,
   Project,
   ResolveAccept,
   TextConflict,
 } from '../shared/types.ts';
-import { detectEol, isBinary, MAX_DIFF_BYTES } from './diff.ts';
-import { HttpError } from './http-error.ts';
 import { formatCommand } from './console-log.ts';
+import { countEols, detectEol, isBinary, MAX_DIFF_BYTES } from './diff.ts';
+import { HttpError } from './http-error.ts';
 import { relativeToProject, resolveInProject } from './projects.ts';
 import { svnConflictInfo, type ConflictFiles } from './svn/info.ts';
 import { runSvn, svnCommandLine } from './svn/run.ts';
@@ -40,7 +41,7 @@ const END = /^>{7}(?: |$)/;
  * (`<<<<<<< .mine`, `||||||| .rOLD`, `=======`, `>>>>>>> .rNEW`). Cada linha mantém o próprio
  * fim de linha. Devolve `null` se não houver marcadores ou se estiverem fora de ordem.
  */
-export function parseConflictMarkers(text: string): ConflictSegment[] | null {
+function parseConflictMarkers(text: string): ConflictSegment[] | null {
   const lines = text.match(/[^\n]*\n|[^\n]+$/g) ?? [];
   const segments: ConflictSegment[] = [];
   let state: 'text' | 'mine' | 'base' | 'theirs' = 'text';
@@ -100,16 +101,11 @@ export function parseConflictMarkers(text: string): ConflictSegment[] | null {
 
 /** Fim de linha mais usado no arquivo; é o que o texto editado à mão recebe. */
 function dominantEol(text: string): '\r\n' | '\n' {
-  const crlf = (text.match(/\r\n/g) ?? []).length;
-  const lf = (text.match(/\n/g) ?? []).length - crlf;
+  const { crlf, lf } = countEols(text);
   return crlf > lf ? '\r\n' : '\n';
 }
 
-function applyChoice(
-  segment: Extract<ConflictSegment, { kind: 'conflict' }>,
-  choice: MergeChoice,
-  eol: string,
-): string {
+function applyChoice(segment: ConflictHunk, choice: MergeChoice, eol: string): string {
   if ('edit' in choice) {
     const text = choice.edit.replace(/\r\n|\r|\n/g, eol);
     return text === '' || text.endsWith(eol) ? text : text + eol;
@@ -141,6 +137,7 @@ async function textConflict(
   project: Project,
   absolute: string,
   files: ConflictFiles,
+  force: boolean,
 ): Promise<TextConflict> {
   const minePath = files.mine ? auxPath(project, files.mine) : absolute;
   const theirsPath = files.theirs ? auxPath(project, files.theirs) : undefined;
@@ -154,18 +151,21 @@ async function textConflict(
   const working = await readFile(absolute).catch(() => null);
   const theirs = theirsPath ? await readFile(theirsPath).catch(() => null) : null;
   const binary = !files.mine || (working !== null && isBinary(working));
+  const tooLarge =
+    !binary &&
+    !force &&
+    Math.max(sizes.mine ?? 0, sizes.theirs ?? 0, working?.length ?? 0) > MAX_DIFF_BYTES;
   const result: TextConflict = {
     binary,
     baseRevision: files.baseRevision,
     theirsRevision: files.theirsRevision,
     sizes,
+    tooLarge,
     compare: null,
     merge: null,
   };
   if (binary) return { ...result, mergeUnavailable: 'arquivo binário' };
 
-  const tooLarge =
-    Math.max(sizes.mine ?? 0, sizes.theirs ?? 0, working?.length ?? 0) > MAX_DIFF_BYTES;
   if (!tooLarge && theirs) {
     const mine = await readFile(minePath).catch(() => null);
     if (mine) result.compare = { mine: mine.toString('utf8'), theirs: theirs.toString('utf8') };
@@ -191,29 +191,34 @@ const resolveArgs = (accept: ResolveAccept | 'working', absolute: string) => [
   absolute,
 ];
 
+/** `force` abre comparação e editor mesmo em arquivo maior que 1 MB. */
 export async function conflictDetails(
   project: Project,
   relativePath: string,
+  force: boolean,
 ): Promise<ConflictDetails> {
   const absolute = resolveInProject(project, relativePath);
   const info = await svnConflictInfo(absolute);
   const textFiles = info.conflicts.find((c) => c.type === 'text');
   const propFiles = info.conflicts.find((c) => c.type === 'property');
 
-  const text = textFiles ? await textConflict(project, absolute, textFiles) : undefined;
+  const text = textFiles ? await textConflict(project, absolute, textFiles, force) : undefined;
   const property = propFiles?.prej
     ? await readFile(auxPath(project, propFiles.prej), 'utf8').catch(() => '')
     : undefined;
 
   // Binário só aceita o arquivo inteiro; propriedade sozinha, só "por trecho" (o valor).
-  // Conflito de árvore fica para o terminal.
-  const options: ResolveAccept[] = text
-    ? text.binary
-      ? ['mine-full', 'theirs-full']
-      : ['mine-conflict', 'theirs-conflict', 'mine-full', 'theirs-full']
-    : propFiles
-      ? ['mine-conflict', 'theirs-conflict']
-      : [];
+  // Conflito de árvore fica para o terminal, e trava as outras opções: `svn resolve` no caminho
+  // marcaria a árvore como resolvida junto.
+  const options: ResolveAccept[] = info.tree
+    ? []
+    : text
+      ? text.binary
+        ? ['mine-full', 'theirs-full']
+        : ['mine-conflict', 'theirs-conflict', 'mine-full', 'theirs-full']
+      : propFiles
+        ? ['mine-conflict', 'theirs-conflict']
+        : [];
   const auxFiles = [textFiles?.base, textFiles?.mine, textFiles?.theirs, propFiles?.prej]
     .filter((p): p is string => p !== undefined)
     .map((p) => relativeToProject(project, p));
@@ -226,14 +231,15 @@ export async function conflictDetails(
       ...info.tree,
       commands: [
         formatCommand(['info', absolute]),
-        formatCommand(['resolve', '--accept', 'working', absolute]),
+        formatCommand(resolveArgs('working', absolute)),
       ],
     },
     auxFiles,
     accepts: Object.fromEntries(
       options.map((accept) => [accept, svnCommandLine(resolveArgs(accept, absolute))]),
     ),
-    mergeCommand: text?.merge ? svnCommandLine(resolveArgs('working', absolute)) : null,
+    mergeCommand:
+      text?.merge && !info.tree ? svnCommandLine(resolveArgs('working', absolute)) : null,
   };
 }
 

@@ -33,7 +33,30 @@ export const configSchema = z.looseObject({
   readOnly: readOnlySchema.default({ local: true, commit: true }),
 });
 
+/**
+ * Diff a mostrar: `local` = minhas mudanças (BASE × cópia local), `incoming` = o que vai chegar
+ * (BASE × servidor), `local-head` = cópia local comparada com o servidor.
+ */
+export const diffCompareSchema = z.enum(['local', 'incoming', 'local-head']);
+
+/** Opções de `svn resolve --accept` oferecidas na tela. */
+export const resolveAcceptSchema = z.enum([
+  'mine-conflict',
+  'theirs-conflict',
+  'mine-full',
+  'theirs-full',
+]);
+
+/** Escolha para um trecho em conflito no editor de mesclagem. */
+export const mergeChoiceSchema = z.union([
+  z.object({ pick: z.enum(['mine', 'theirs', 'both']) }),
+  z.object({ edit: z.string() }),
+]);
+
 export type AppConfig = z.infer<typeof configSchema>;
 export type Group = z.infer<typeof groupSchema>;
 export type IgnoreConfig = z.infer<typeof ignoreSchema>;
 export type ReadOnlyConfig = z.infer<typeof readOnlySchema>;
+export type DiffCompare = z.infer<typeof diffCompareSchema>;
+export type ResolveAccept = z.infer<typeof resolveAcceptSchema>;
+export type MergeChoice = z.infer<typeof mergeChoiceSchema>;

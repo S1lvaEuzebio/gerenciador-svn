@@ -30,20 +30,23 @@ async function incomingRevisions(
   fromRevision: number,
   headRevision: number,
   incoming: IncomingChange[],
-): Promise<RevisionSummary[]> {
-  if (fromRevision >= headRevision) return [];
+): Promise<{ revisions: RevisionSummary[]; truncated: boolean }> {
+  if (fromRevision >= headRevision) return { revisions: [], truncated: false };
   const base = project.relativeUrl.slice(1);
   const targets = incoming.map((c) => (c.path === '' ? base : `${base}/${c.path}`));
   const related = (path: string) =>
     targets.some((t) => t === path || t.startsWith(`${path}/`) || path.startsWith(`${t}/`));
+  // Do mais novo para o mais antigo: se o limite cortar, somem as revisões antigas.
   const log = await svnLog(
     repoUrl(project, '', headRevision),
-    `${fromRevision + 1}:${headRevision}`,
+    `${headRevision}:${fromRevision + 1}`,
     MAX_REVISIONS,
   );
-  return log
+  const revisions = log
     .filter((entry) => entry.paths.some(related))
-    .map(({ revision, author, date, message }) => ({ revision, author, date, message }));
+    .map(({ revision, author, date, message }) => ({ revision, author, date, message }))
+    .reverse();
+  return { revisions, truncated: log.length === MAX_REVISIONS };
 }
 
 async function previewProject(project: Project, config: AppConfig): Promise<UpdatePreviewProject> {
@@ -54,6 +57,7 @@ async function previewProject(project: Project, config: AppConfig): Promise<Upda
     headRevision: remote.headRevision,
     incoming: remote.incoming,
     revisions: [],
+    revisionsTruncated: false,
     command: null,
   };
   if (remote.error || remote.headRevision === null) {
@@ -62,10 +66,12 @@ async function previewProject(project: Project, config: AppConfig): Promise<Upda
   if (remote.incoming.length === 0) return base;
   try {
     const { revision } = await svnInfo(project.id);
+    const log = await incomingRevisions(project, revision, remote.headRevision, remote.incoming);
     return {
       ...base,
       fromRevision: revision,
-      revisions: await incomingRevisions(project, revision, remote.headRevision, remote.incoming),
+      revisions: log.revisions,
+      revisionsTruncated: log.truncated,
       command: svnCommandLine(updateArgs(project, remote.headRevision)),
     };
   } catch (error) {

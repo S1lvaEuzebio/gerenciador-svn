@@ -84,6 +84,6 @@ export function runSvnRaw(args: string[], onOutput?: (text: string) => void): Pr
   });
 }
 
-export async function runSvn(args: string[], onOutput?: (text: string) => void): Promise<string> {
-  return (await runSvnRaw(args, onOutput)).toString('utf8');
+export async function runSvn(args: string[]): Promise<string> {
+  return (await runSvnRaw(args)).toString('utf8');
 }

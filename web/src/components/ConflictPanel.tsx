@@ -134,7 +134,8 @@ export function ConflictPanel({
   locked: boolean;
   onUnlock: () => void;
 }) {
-  const details = useConflict(selection.projectId, selection.path);
+  const [force, setForce] = useState(false);
+  const details = useConflict(selection.projectId, selection.path, force);
   const resolve = useResolve(selection.projectId, selection.path);
   const merge = useSaveMerge(selection.projectId, selection.path);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -232,7 +233,18 @@ export function ConflictPanel({
           ))}
         </div>
         <div className="min-h-0 flex-1">
-          {view === 'compare' ? (
+          {text.tooLarge ? (
+            <Placeholder>
+              <p>
+                Arquivo grande (
+                {formatBytes(Math.max(text.sizes.mine ?? 0, text.sizes.theirs ?? 0))}). Comparar e
+                mesclar pode deixar a tela lenta.
+              </p>
+              <Button variant="outline" size="sm" onClick={() => setForce(true)}>
+                Abrir mesmo assim
+              </Button>
+            </Placeholder>
+          ) : view === 'compare' ? (
             text.compare ? (
               <MergeEditor
                 original={text.compare.mine}
@@ -242,7 +254,9 @@ export function ConflictPanel({
                 ignoreWhitespace={false}
               />
             ) : (
-              <Placeholder>Comparação indisponível (arquivo grande).</Placeholder>
+              <Placeholder>
+                Comparação indisponível: faltam as versões guardadas do conflito.
+              </Placeholder>
             )
           ) : text.merge ? (
             <ConflictMerge
@@ -251,7 +265,7 @@ export function ConflictPanel({
               eol={text.merge.eol}
               baseRevision={text.baseRevision}
               theirsRevision={text.theirsRevision}
-              disabled={locked}
+              disabled={locked || data.mergeCommand === null}
               onSave={(choices) => setPending({ kind: 'merge', choices })}
             />
           ) : (
@@ -329,6 +343,17 @@ export function ConflictPanel({
               <p>
                 O svn monta o resultado a partir das versões guardadas no conflito: edições feitas
                 no arquivo depois do update se perdem.
+              </p>
+            )}
+            {text && data.property !== undefined && (
+              <p className="text-warning-foreground">
+                Este arquivo também tem conflito de propriedade, que vai ser marcado como resolvido
+                junto
+                {pending?.kind === 'merge'
+                  ? ', com o valor atual da cópia local.'
+                  : pending?.kind === 'resolve' && pending.accept.startsWith('theirs')
+                    ? ', com o valor do servidor.'
+                    : ', com o seu valor.'}
               </p>
             )}
           </>

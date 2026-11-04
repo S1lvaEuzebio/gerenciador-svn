@@ -65,8 +65,10 @@ export const api = {
   startUpdate: (targets: Array<{ projectId: string; revision: number }>) =>
     post<Operation>('/update', { targets }),
   operation: (id: number) => request<Operation>(`/operations/${id}`),
-  conflict: (project: string, path: string) =>
-    request<ConflictDetails>(`/conflict?${new URLSearchParams({ project, path })}`),
+  conflict: (project: string, path: string, force: boolean) =>
+    request<ConflictDetails>(
+      `/conflict?${new URLSearchParams({ project, path, force: force ? '1' : '0' })}`,
+    ),
   resolve: (project: string, path: string, accept: ResolveAccept) =>
     post<CommandResult>('/conflict/resolve', { project, path, accept }),
   saveMerge: (project: string, path: string, fingerprint: string, choices: MergeChoice[]) =>
