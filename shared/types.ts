@@ -105,17 +105,35 @@ export interface RemoteStatusResponse {
 /** Ação do `svn log -v` num caminho: adicionado, apagado, modificado, substituído. */
 export type ChangeAction = 'A' | 'D' | 'M' | 'R';
 
+/** Caminho a partir da raiz do repositório (`/projeto/trunk/a.txt`) numa revisão. */
+export interface RepoNode {
+  path: string;
+  revision: number;
+}
+
+/** Caminho relativo à working copy de um projeto descoberto. */
+export interface ProjectFile {
+  projectId: string;
+  path: string;
+}
+
+/** Filtros do histórico: partes do autor e do texto da mensagem. */
+export interface HistoryFilters {
+  author: string;
+  text: string;
+}
+
 export interface ChangedPath {
   /** Relativo à raiz do repositório, ex.: `/projeto/trunk/a.txt`. */
   path: string;
   action: ChangeAction;
   kind: NodeKind;
-  /** Origem da cópia (cópia ou renomeação). */
-  copyFrom?: { path: string; revision: number };
+  /** Origem da cópia (cópia ou renomeação, inclusive de uma pasta acima). */
+  copyFrom?: RepoNode;
   /** Propriedades alteradas; ausente quando o svn não informa. */
   propMods?: boolean;
   /** Projeto descoberto onde o caminho cai, com o caminho relativo a ele. */
-  project?: { id: string; path: string };
+  project?: ProjectFile;
 }
 
 export interface LogEntry {

@@ -9,6 +9,7 @@ import type {
   DiffCompare,
   DiffResponse,
   HistoryCompare,
+  HistoryFilters,
   LogCursor,
   LogPage,
   MergeChoice,
@@ -52,12 +53,10 @@ export interface DiffRequest {
 }
 
 /** Histórico de um ou mais projetos (log unificado) ou de um arquivo de um projeto. */
-export interface HistoryRequest {
+export interface HistoryRequest extends HistoryFilters {
   projectIds: string[];
   /** Caminho relativo ao projeto, no histórico de arquivo. */
   file: string | null;
-  author: string;
-  text: string;
 }
 
 export interface HistoryDiffRequest {

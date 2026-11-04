@@ -1,10 +1,9 @@
 import type { DiffCompare, ProjectRemoteStatus } from '@shared/types.ts';
-import { FileDiff, History } from 'lucide-react';
+import { FileDiff } from 'lucide-react';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { useDiff } from '@/lib/queries';
 import { useDiffDisplay } from '@/lib/use-diff-display';
-import { DiffDisplayControls, DiffResult, SegmentedControl } from './DiffView';
+import { DiffDisplayControls, DiffResult, HistoryButton, SegmentedControl } from './DiffView';
 import { Placeholder } from './Placeholder';
 
 export interface FileSelection {
@@ -82,12 +81,7 @@ export function DiffPanel({
             {selection.projectName} · {sides[0]} × {sides[1]}
           </div>
         </div>
-        {onHistory && (
-          <Button variant="ghost" size="sm" onClick={onHistory} title="Histórico do arquivo">
-            <History />
-            Histórico
-          </Button>
-        )}
+        {onHistory && <HistoryButton onClick={onHistory} />}
         <SegmentedControl
           options={options.map((value) => ({
             value,

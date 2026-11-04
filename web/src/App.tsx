@@ -1,6 +1,13 @@
+import { NO_FILTERS } from '@shared/history.ts';
 import { LOCK_LABELS } from '@shared/labels.ts';
 import type { ReadOnlyConfig } from '@shared/schema.ts';
-import type { CommitRequest, Project, ProjectRemoteStatus, ProjectStatus } from '@shared/types.ts';
+import type {
+  CommitRequest,
+  HistoryFilters,
+  Project,
+  ProjectRemoteStatus,
+  ProjectStatus,
+} from '@shared/types.ts';
 import { useIsFetching } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
@@ -19,7 +26,7 @@ import { ConsolePanel } from '@/components/ConsolePanel';
 import { DiffPanel, type FileSelection } from '@/components/DiffPanel';
 import { FileList, type FileTab } from '@/components/FileList';
 import { GroupsDialog } from '@/components/GroupsDialog';
-import { HistoryList, type HistoryFile, type HistoryFilters } from '@/components/HistoryList';
+import { HistoryList, type HistoryFile } from '@/components/HistoryList';
 import { Placeholder } from '@/components/Placeholder';
 import { RevisionPanel, type RevisionSelection } from '@/components/RevisionPanel';
 import { SettingsDialog, type SettingsTab } from '@/components/SettingsDialog';
@@ -66,7 +73,7 @@ export function App() {
   const [selection, setSelection] = useState<FileSelection | null>(null);
   const [fileTab, setFileTab] = useStoredState<FileTab>('file-tab', 'local', isFileTab);
   const [historyFile, setHistoryFile] = useState<HistoryFile | null>(null);
-  const [historyFilters, setHistoryFilters] = useState<HistoryFilters>({ author: '', text: '' });
+  const [historyFilters, setHistoryFilters] = useState<HistoryFilters>(NO_FILTERS);
   /** Filtro aplicado depois de uma pausa na digitação: cada busca consulta o servidor. */
   const appliedFilters = useDebouncedValue(historyFilters, 400);
   const [revision, setRevision] = useState<RevisionSelection | null>(null);

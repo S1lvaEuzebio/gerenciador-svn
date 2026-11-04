@@ -7,7 +7,7 @@ import type {
   UpdatePreviewProject,
 } from '../shared/types.ts';
 import { startOperation } from './operations.ts';
-import { repoPathOf, repoUrl } from './projects.ts';
+import { projectPathUrl, repoPathOf } from './projects.ts';
 import { projectRemoteStatus } from './remote-status.ts';
 import { svnInfo } from './svn/info.ts';
 import { svnLog } from './svn/log.ts';
@@ -37,7 +37,7 @@ async function incomingRevisions(
     targets.some((t) => t === path || t.startsWith(`${path}/`) || path.startsWith(`${t}/`));
   // Do mais novo para o mais antigo: se o limite cortar, somem as revisões antigas.
   const log = await svnLog(
-    [repoUrl(project, '', headRevision)],
+    [projectPathUrl(project, '', headRevision)],
     `${headRevision}:${fromRevision + 1}`,
     MAX_REVISIONS,
   );

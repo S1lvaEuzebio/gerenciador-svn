@@ -2,7 +2,7 @@ import type { Stats } from 'node:fs';
 import { lstat, open, readFile, readlink } from 'node:fs/promises';
 import type { DiffCompare, DiffResponse, Eol, ItemStatus, Project } from '../shared/types.ts';
 import { HttpError } from './http-error.ts';
-import { repoUrl, resolveInProject } from './projects.ts';
+import { projectPathUrl, resolveInProject } from './projects.ts';
 import { svnInfo } from './svn/info.ts';
 import { svnFileSize } from './svn/list.ts';
 import { isNotFound, localTarget, runSvn, runSvnRaw } from './svn/run.ts';
@@ -83,7 +83,7 @@ async function catRepo(url: string): Promise<Buffer> {
  * `catch`, uma falha dele derrubaria o processo como rejeição não tratada. Quem faz `await`
  * continua recebendo o erro.
  */
-export function handledLater<T>(promise: Promise<T>): Promise<T> {
+export function noUnhandledRejection<T>(promise: Promise<T>): Promise<T> {
   promise.catch(() => undefined);
   return promise;
 }
@@ -95,13 +95,14 @@ export type Source =
   | { from: 'working'; path: string; size: number; isLink: boolean }
   | { from: 'repo'; url: string };
 
-export const NONE: Source = { from: 'none' };
+/** Lado que não existe: caminho novo, apagado ou fora do disco. */
+export const ABSENT: Source = { from: 'none' };
 
 /** Arquivo de trabalho como lado do diff; sem arquivo (ou pasta), nada. */
 export function workingSource(path: string, info: Stats | null): Source {
   return info && !info.isDirectory()
     ? { from: 'working', path, size: info.size, isLink: info.isSymbolicLink() }
-    : NONE;
+    : ABSENT;
 }
 
 /** Tamanho que dá para saber sem ler o conteúdo; a BASE só lendo. */
@@ -207,7 +208,7 @@ export async function fileDiff(
 ): Promise<DiffResponse> {
   const absolute = resolveInProject(project, relativePath);
   const [left, right] = SIDES[compare];
-  const url = revision === null ? null : repoUrl(project, relativePath, revision);
+  const url = revision === null ? null : projectPathUrl(project, relativePath, revision);
   if (compare !== 'local' && url === null) {
     throw new HttpError(400, 'falta a revisão do servidor para comparar');
   }
@@ -217,7 +218,7 @@ export async function fileDiff(
   // Sem entrada no status e sem arquivo no disco: caminho que só existe no servidor.
   const item: ItemStatus = entry?.item ?? (info ? 'normal' : 'none');
 
-  const props = handledLater(
+  const props = noUnhandledRejection(
     compare === 'local'
       ? entry?.props === 'modified'
         ? propsDiff(absolute, [])
@@ -235,7 +236,7 @@ export async function fileDiff(
   const source = (side: Side): Source => {
     switch (side) {
       case 'base':
-        return hasBase(item) ? { from: 'base', path: absolute } : NONE;
+        return hasBase(item) ? { from: 'base', path: absolute } : ABSENT;
       case 'working':
         return workingSource(absolute, hasWorking(item) ? info : null);
       case 'repo':

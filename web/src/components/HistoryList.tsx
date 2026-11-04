@@ -1,4 +1,5 @@
-import type { LogEntry, Project } from '@shared/types.ts';
+import { hasFilters, NO_FILTERS } from '@shared/history.ts';
+import type { HistoryFilters, LogEntry, Project, ProjectFile } from '@shared/types.ts';
 import { FileClock, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,15 +8,8 @@ import { useHistory } from '@/lib/queries';
 import { cn, firstLine, formatDate } from '@/lib/utils';
 
 /** Arquivo cujo histórico está aberto, no caminho atual da working copy. */
-export interface HistoryFile {
-  projectId: string;
+export interface HistoryFile extends ProjectFile {
   projectName: string;
-  path: string;
-}
-
-export interface HistoryFilters {
-  author: string;
-  text: string;
 }
 
 interface HistoryListProps {
@@ -33,7 +27,7 @@ interface HistoryListProps {
 
 /** Projetos que a revisão mexeu, para o log unificado de vários projetos. */
 function touchedProjects(entry: LogEntry, names: Map<string, string>): string[] {
-  const ids = new Set(entry.paths.flatMap((p) => (p.project ? [p.project.id] : [])));
+  const ids = new Set(entry.paths.flatMap((p) => (p.project ? [p.project.projectId] : [])));
   return [...ids].map((id) => names.get(id) ?? id);
 }
 
@@ -92,7 +86,9 @@ export function HistoryList({
   const unified = file === null && request.projectIds.length > 1;
   const entries = history.data?.pages.flatMap((page) => page.entries) ?? [];
   const scannedTo = history.data?.pages.at(-1)?.scannedTo ?? null;
-  const filtering = request.author !== '' || request.text !== '';
+  const filtering = hasFilters(request);
+  // Com filtro, a busca para depois de um tanto de revisões; a tela diz até onde foi.
+  const searchedTo = filtering && history.hasNextPage ? scannedTo : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -132,12 +128,12 @@ export function HistoryList({
             aria-label="Filtrar pelo texto da mensagem"
             className="h-7 min-w-0 flex-1 text-xs"
           />
-          {(filters.author !== '' || filters.text !== '') && (
+          {hasFilters(filters) && (
             <Button
               variant="ghost"
               size="icon-sm"
               className="size-7"
-              onClick={() => onFilters({ author: '', text: '' })}
+              onClick={() => onFilters(NO_FILTERS)}
               title="Limpar filtros"
             >
               <X />
@@ -170,14 +166,12 @@ export function HistoryList({
             {entries.length === 0 && (
               <p className="text-muted-foreground px-2 py-1 text-sm">
                 {filtering ? 'Nenhuma revisão com esse filtro' : 'Nenhuma revisão'}
-                {filtering && history.hasNextPage && scannedTo !== null
-                  ? ` até a r${scannedTo}.`
-                  : '.'}
+                {searchedTo !== null ? ` até a r${searchedTo}.` : '.'}
               </p>
             )}
             <div className="space-y-1 px-2 py-2">
-              {filtering && history.hasNextPage && scannedTo !== null && entries.length > 0 && (
-                <p className="text-muted-foreground text-xs">Procurado até a r{scannedTo}.</p>
+              {searchedTo !== null && entries.length > 0 && (
+                <p className="text-muted-foreground text-xs">Procurado até a r{searchedTo}.</p>
               )}
               {history.hasNextPage ? (
                 <Button

@@ -18,7 +18,7 @@ export const keys = {
   remoteStatus: ['remote-status'] as const,
   diff: (request: DiffRequest) => ['diff', request] as const,
   history: (request: HistoryRequest) => ['history', request] as const,
-  historyDiff: (request: HistoryDiffRequest) => ['history-diff', request] as const,
+  historyDiff: (request: HistoryDiffRequest) => ['history-diff', request.compare, request] as const,
   conflict: (project: string, path: string, force: boolean) =>
     ['conflict', project, path, force] as const,
   updatePreview: (projects: string[]) => ['update-preview', projects] as const,
@@ -141,8 +141,11 @@ export function useConsole(open: boolean) {
   });
 }
 
-/** O que muda quando a cópia local muda: status local, diffs e detalhes de conflito. */
-const LOCAL_KEYS = [keys.status, ['diff'], ['history-diff'], ['conflict']];
+/**
+ * O que muda quando a cópia local muda: status local, diffs, comparações do histórico com o
+ * arquivo atual e detalhes de conflito.
+ */
+const LOCAL_KEYS = [keys.status, ['diff'], ['history-diff', 'current'], ['conflict']];
 
 /** Rodescobre os projetos e só depois refaz os status, que usam a lista descoberta. */
 export function useRefreshAll() {

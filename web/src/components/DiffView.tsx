@@ -1,6 +1,6 @@
 import type { DiffResponse, Eol, RemoteItem } from '@shared/types.ts';
 import type { UseQueryResult } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { History, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -68,6 +68,15 @@ export function DiffDisplayControls({ display }: { display: DiffDisplay }) {
         Ignorar espaços
       </Label>
     </>
+  );
+}
+
+export function HistoryButton({ onClick }: { onClick: () => void }) {
+  return (
+    <Button variant="ghost" size="sm" onClick={onClick} title="Histórico do arquivo">
+      <History />
+      Histórico
+    </Button>
   );
 }
 

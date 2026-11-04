@@ -1,12 +1,11 @@
-import type { ChangedPath, HistoryCompare, LogEntry, Project } from '@shared/types.ts';
-import { History } from 'lucide-react';
+import { changeSides } from '@shared/history.ts';
+import type { ChangedPath, HistoryCompare, LogEntry, Project, ProjectFile } from '@shared/types.ts';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { useHistoryDiff } from '@/lib/queries';
 import { changeActionLabel } from '@/lib/status';
 import { cn, formatDate } from '@/lib/utils';
 import { useDiffDisplay } from '@/lib/use-diff-display';
-import { DiffDisplayControls, DiffResult, SegmentedControl } from './DiffView';
+import { DiffDisplayControls, DiffResult, HistoryButton, SegmentedControl } from './DiffView';
 import type { HistoryFile } from './HistoryList';
 import { Placeholder } from './Placeholder';
 
@@ -20,23 +19,19 @@ export interface RevisionSelection {
 }
 
 /** Arquivo da working copy que corresponde a um caminho da revisão, para comparar com o atual. */
-interface LocalFile {
-  projectId: string;
-  path: string;
-}
-
-function localFileOf(change: ChangedPath, selection: RevisionSelection): LocalFile | null {
+function localFileOf(change: ChangedPath, selection: RevisionSelection): ProjectFile | null {
   // No histórico de arquivo, o caminho antigo (antes de renomear) é o arquivo atual.
   if (selection.file && change.path === selection.entry.file?.path) return selection.file;
-  return change.project ? { projectId: change.project.id, path: change.project.path } : null;
+  return change.project ?? null;
 }
 
 /** Nomes dos dois lados do diff do que a revisão mudou. */
-function changeSides(change: ChangedPath, revision: number): [string, string] {
-  if (change.copyFrom) return [`cópia de r${change.copyFrom.revision}`, `r${revision}`];
-  if (change.action === 'A') return ['(não existia)', `r${revision}`];
-  if (change.action === 'D') return [`r${revision - 1}`, '(apagado)'];
-  return [`r${revision - 1}`, `r${revision}`];
+function sideNames(change: ChangedPath, revision: number): [string, string] {
+  const [left, right] = changeSides(change, revision);
+  return [
+    left === null ? '(não existia)' : `${change.copyFrom ? 'cópia de ' : ''}r${left.revision}`,
+    right === null ? '(apagado)' : `r${right.revision}`,
+  ];
 }
 
 function PathRow({
@@ -78,7 +73,7 @@ function PathRow({
       {change.project ? (
         <>
           <span className="text-muted-foreground shrink-0 text-[11px]">
-            {projects.get(change.project.id)}
+            {projects.get(change.project.projectId)}
           </span>
           <span className="min-w-0 truncate font-mono text-xs">
             {change.project.path || '(pasta do projeto)'}
@@ -110,7 +105,7 @@ function ChangeDiff({
 }: {
   change: ChangedPath;
   selection: RevisionSelection;
-  onFileHistory: (file: LocalFile) => void;
+  onFileHistory: (file: ProjectFile) => void;
 }) {
   const { revision } = selection.entry;
   const local = localFileOf(change, selection);
@@ -124,7 +119,7 @@ function ChangeDiff({
     nothingToFetch
       ? null
       : {
-          projectId: local?.projectId ?? change.project?.id ?? selection.repoProjectId,
+          projectId: local?.projectId ?? selection.repoProjectId,
           path: change.path,
           revision,
           compare,
@@ -133,7 +128,7 @@ function ChangeDiff({
         },
   );
   const sides: [string, string] =
-    compare === 'current' ? [`r${revision}`, 'local'] : changeSides(change, revision);
+    compare === 'current' ? [`r${revision}`, 'local'] : sideNames(change, revision);
   const isOwnHistory =
     selection.file !== null &&
     local?.projectId === selection.file.projectId &&
@@ -146,15 +141,7 @@ function ChangeDiff({
           {sides[0]} × {sides[1]}
         </div>
         {local && change.kind !== 'dir' && !isOwnHistory && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onFileHistory(local)}
-            title="Histórico deste arquivo"
-          >
-            <History />
-            Histórico
-          </Button>
+          <HistoryButton onClick={() => onFileHistory(local)} />
         )}
         <SegmentedControl
           options={[
@@ -234,7 +221,7 @@ export function RevisionPanel({
       </div>
       <div className="max-h-[30%] shrink-0 overflow-y-auto border-b p-1">
         <div className="text-muted-foreground px-2 pb-0.5 text-xs font-medium uppercase">
-          Caminhos ({entry.paths.length})
+          Caminhos ({paths.length})
         </div>
         {paths.map((change) => (
           <PathRow

@@ -1,6 +1,6 @@
 import { readdir, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { Project, ProjectsResponse, RootError } from '../shared/types.ts';
+import type { Project, ProjectFile, ProjectsResponse, RootError } from '../shared/types.ts';
 import { resolvedRoots } from './config.ts';
 import { HttpError } from './http-error.ts';
 import { svnInfo } from './svn/info.ts';
@@ -113,18 +113,32 @@ export function projectPathOf(project: Project, repoPath: string): string | null
   return repoPath.startsWith(prefix) ? repoPath.slice(prefix.length) : null;
 }
 
+/**
+ * Projeto onde o caminho do repositório cai, com o caminho relativo a ele. Vale o mais
+ * específico; no empate, o que vem antes na lista.
+ */
+export function projectFileAt(projects: Project[], repoPath: string): ProjectFile | undefined {
+  let best: { project: Project; path: string } | undefined;
+  for (const project of projects) {
+    const path = projectPathOf(project, repoPath);
+    if (path !== null && (!best || project.relativeUrl.length > best.project.relativeUrl.length)) {
+      best = { project, path };
+    }
+  }
+  return best && { projectId: best.project.id, path: best.path };
+}
+
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
-/** URL de um caminho do repositório (`/projeto/trunk/a.txt`), presa à revisão (`url@rev`). */
-export function repositoryUrl(
-  project: Project,
-  repoPath: string,
-  revision: number | 'HEAD',
-): string {
+/**
+ * URL de um caminho a partir da raiz do repositório do projeto (`/projeto/trunk/a.txt`), presa
+ * à revisão (`url@rev`).
+ */
+export function repoPathUrl(project: Project, repoPath: string, revision: number | 'HEAD'): string {
   return `${project.repoRootUrl}${encodePath(repoPath)}@${revision}`;
 }
 
-/** URL de um caminho do projeto, presa à revisão. */
-export function repoUrl(project: Project, relativePath: string, revision: number): string {
-  return repositoryUrl(project, repoPathOf(project, relativePath), revision);
+/** URL de um caminho relativo à working copy do projeto, presa à revisão. */
+export function projectPathUrl(project: Project, relativePath: string, revision: number): string {
+  return repoPathUrl(project, repoPathOf(project, relativePath), revision);
 }
