@@ -1,4 +1,7 @@
-import type { IncomingChange, LocalChange } from '@shared/types.ts';
+import { isConflicted } from '@shared/status.ts';
+import type { CommitAction, IncomingChange, LocalChange } from '@shared/types.ts';
+
+export { isPropsOnly } from '@shared/status.ts';
 
 export interface StatusLabel {
   letter: string;
@@ -42,13 +45,16 @@ export function statusLabel(change: LocalChange): StatusLabel {
   return PROPS_MODIFIED;
 }
 
-export function isConflict(change: LocalChange): boolean {
-  return change.item === 'conflicted' || change.props === 'conflicted' || change.treeConflict;
+export const isConflict = (change: LocalChange): boolean => isConflicted(change);
+
+/** Pode ser marcado para o commit: ignorado nunca entra, conflito precisa ser resolvido antes. */
+export function isCommittable(change: LocalChange): boolean {
+  return !change.ignored && !isConflict(change);
 }
 
-/** Só mudança de propriedade, sem mudança de conteúdo. */
-export function isPropsOnly(change: LocalChange): boolean {
-  return (change.item === 'normal' || change.item === 'none') && change.props === 'modified';
+/** Chave de um item na seleção do commit. */
+export function commitKey(projectId: string, path: string): string {
+  return `${projectId}\n${path}`;
 }
 
 /** Caminho para mostrar na lista: pasta do projeto e pastas com `/` no fim. */
@@ -75,4 +81,18 @@ const INCOMING_LABELS: Record<IncomingChange['item'], StatusLabel> = {
 
 export function incomingLabel(change: IncomingChange): StatusLabel {
   return INCOMING_LABELS[change.item];
+}
+
+const COMMIT_LABELS: Record<CommitAction, StatusLabel> = {
+  'to-add': { ...ITEM_LABELS.added!, label: 'novo: entra com svn add' },
+  'to-delete': { ...ITEM_LABELS.deleted!, label: 'faltando no disco: entra com svn delete' },
+  added: ITEM_LABELS.added!,
+  deleted: ITEM_LABELS.deleted!,
+  modified: ITEM_LABELS.modified!,
+  replaced: ITEM_LABELS.replaced!,
+  props: PROPS_MODIFIED,
+};
+
+export function commitActionLabel(action: CommitAction): StatusLabel {
+  return COMMIT_LABELS[action];
 }

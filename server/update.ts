@@ -11,13 +11,13 @@ import { repoUrl } from './projects.ts';
 import { projectRemoteStatus } from './remote-status.ts';
 import { svnInfo } from './svn/info.ts';
 import { svnLog } from './svn/log.ts';
-import { svnCommandLine } from './svn/run.ts';
+import { localTarget, svnCommandLine } from './svn/run.ts';
 
 const MAX_REVISIONS = 100;
 
 /** Sempre até a revisão mostrada na prévia, e conflitos ficam para resolver na tela. */
 function updateArgs(project: Project, revision: number): string[] {
-  return ['update', '--accept', 'postpone', '-r', String(revision), project.id];
+  return ['update', '--accept', 'postpone', '-r', String(revision), localTarget(project.id)];
 }
 
 /**
@@ -90,8 +90,10 @@ export function startUpdate(targets: Array<{ project: Project; revision: number 
   return startOperation(
     'Update',
     targets.map(({ project, revision }) => ({
-      projectId: project.id,
+      label: project.name,
+      projectIds: [project.id],
       args: updateArgs(project, revision),
     })),
+    'parallel',
   );
 }

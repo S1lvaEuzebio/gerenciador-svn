@@ -4,7 +4,7 @@ import { HttpError } from './http-error.ts';
 import { repoUrl, resolveInProject } from './projects.ts';
 import { svnInfo } from './svn/info.ts';
 import { svnFileSize } from './svn/list.ts';
-import { runSvn, runSvnRaw, SvnError } from './svn/run.ts';
+import { localTarget, runSvn, runSvnRaw, SvnError } from './svn/run.ts';
 import { svnStatus } from './svn/status.ts';
 
 export const MAX_DIFF_BYTES = 1024 * 1024;
@@ -67,7 +67,7 @@ async function propsDiff(path: string, revisionArgs: string[]): Promise<string |
       '--depth',
       'empty',
       '--properties-only',
-      path,
+      localTarget(path),
     ]);
     return text.trim() === '' ? undefined : text;
   } catch (error) {
@@ -171,7 +171,7 @@ export async function fileDiff(
     switch (side) {
       case 'base':
         return hasBase(item)
-          ? runSvnRaw(['cat', '-r', 'BASE', absolute])
+          ? runSvnRaw(['cat', '-r', 'BASE', localTarget(absolute)])
           : Promise.resolve(Buffer.alloc(0));
       case 'repo':
         return catRepo(url!);

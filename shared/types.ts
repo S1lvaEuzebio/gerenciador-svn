@@ -1,6 +1,12 @@
-import type { AppConfig, DiffCompare, MergeChoice, ResolveAccept } from './schema.ts';
+import type {
+  AppConfig,
+  CommitRequest,
+  DiffCompare,
+  MergeChoice,
+  ResolveAccept,
+} from './schema.ts';
 
-export type { DiffCompare, MergeChoice, ResolveAccept };
+export type { CommitRequest, DiffCompare, MergeChoice, ResolveAccept };
 
 /** Valores de `wc-status/@item` do `svn status --xml`. */
 export type ItemStatus =
@@ -121,17 +127,19 @@ export interface UpdatePreview {
   projects: UpdatePreviewProject[];
 }
 
-export type StepState = 'queued' | 'running' | 'done' | 'failed';
+/** `skipped`: não rodou porque uma etapa anterior da sequência falhou. */
+export type StepState = 'queued' | 'running' | 'done' | 'failed' | 'skipped';
 
 export interface OperationStep {
-  projectId: string;
+  /** Projeto da etapa, ou o que ela faz quando mexe em vários (ex.: o commit). */
+  label: string;
   command: string;
   state: StepState;
   /** Saída do svn até agora (stdout e stderr). */
   output: string;
 }
 
-/** Operação de gravação em andamento, uma etapa por working copy. */
+/** Operação de gravação em andamento: uma etapa por working copy (update) ou em sequência (commit). */
 export interface Operation {
   id: number;
   title: string;
@@ -206,6 +214,41 @@ export interface ConflictDetails {
   accepts: Partial<Record<ResolveAccept, string>>;
   /** Comando que grava o resultado do editor de mesclagem. */
   mergeCommand: string | null;
+}
+
+/**
+ * O que o commit faz com o caminho. `to-add` e `to-delete` são itens `?` e `!`: o app roda
+ * `svn add` ou `svn delete` antes do commit. Os outros já estão marcados na working copy.
+ */
+export type CommitAction =
+  'to-add' | 'to-delete' | 'added' | 'deleted' | 'modified' | 'replaced' | 'props';
+
+export interface CommitItem {
+  path: string;
+  kind: NodeKind;
+  action: CommitAction;
+  /**
+   * Entrou sem ser marcado: `parent` = pasta nova acima de um item marcado (o svn exige);
+   * `content` = conteúdo de pasta nova ou apagada que foi marcada.
+   */
+  included?: 'parent' | 'content';
+}
+
+export interface CommitPreviewProject {
+  projectId: string;
+  items: CommitItem[];
+  /** Itens marcados que mudaram no servidor: precisam de update antes do commit. */
+  outdated: string[];
+}
+
+export interface CommitPreview {
+  projects: CommitPreviewProject[];
+  /** Comandos exatos, na ordem em que rodam. */
+  commands: string[];
+  /** Problemas que impedem o commit (item ignorado, em conflito, mensagem vazia...). */
+  errors: string[];
+  /** Identifica o plano: o commit só roda se o plano não mudou desde a prévia. */
+  fingerprint: string;
 }
 
 export interface CommandResult {

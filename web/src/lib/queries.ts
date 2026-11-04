@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useEffectEvent, useState } from 'react';
 import type { Group, IgnoreConfig, ReadOnlyConfig } from '@shared/schema.ts';
-import type { ConfigResponse, MergeChoice, ResolveAccept } from '@shared/types.ts';
+import type {
+  CommitRequest,
+  ConfigResponse,
+  MergeChoice,
+  Operation,
+  ResolveAccept,
+} from '@shared/types.ts';
 import { api, type DiffRequest } from './api';
 
 export const keys = {
@@ -12,6 +19,7 @@ export const keys = {
   conflict: (project: string, path: string, force: boolean) =>
     ['conflict', project, path, force] as const,
   updatePreview: (projects: string[]) => ['update-preview', projects] as const,
+  commitPreview: (commit: CommitRequest) => ['commit-preview', commit] as const,
   operation: (id: number) => ['operation', id] as const,
   console: ['console'] as const,
 };
@@ -73,6 +81,16 @@ export function useUpdatePreview(projects: string[]) {
   });
 }
 
+/** Prévia do commit: lista final, desatualizados e comandos. Refeita a cada abertura. */
+export function useCommitPreview(commit: CommitRequest) {
+  return useQuery({
+    queryKey: keys.commitPreview(commit),
+    queryFn: () => api.commitPreview(commit),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
 /** Acompanha uma operação de gravação até terminar. */
 export function useOperation(id: number | null) {
   return useQuery({
@@ -109,6 +127,40 @@ export function useRefreshAll() {
         queryClient.invalidateQueries({ queryKey }),
       ),
     );
+  };
+}
+
+/**
+ * Ciclo de uma operação de gravação nas janelas de update e commit: começa, acompanha a saída e,
+ * ao terminar, recarrega tudo e avisa se todas as etapas deram certo.
+ */
+export function useOperationRun<T>(
+  start: (args: T) => Promise<Operation>,
+  onDone: (succeeded: boolean) => void,
+) {
+  const [operationId, setOperationId] = useState<number | null>(null);
+  const operation = useOperation(operationId);
+  const mutation = useMutation({ mutationFn: start, onSuccess: (op) => setOperationId(op.id) });
+  const done = operation.data?.done ?? false;
+  const succeeded = done && operation.data!.steps.every((s) => s.state === 'done');
+
+  const refreshAll = useRefreshAll();
+  const finish = useEffectEvent(() => {
+    onDone(succeeded);
+    void refreshAll();
+  });
+  useEffect(() => {
+    if (done) finish();
+  }, [done]);
+
+  return {
+    started: operationId !== null,
+    operation: operation.data,
+    start: mutation.mutate,
+    starting: mutation.isPending,
+    startError: mutation.error,
+    /** A janela não fecha enquanto o svn roda: a saída e a recarga do status dependem dela. */
+    busy: mutation.isPending || (operationId !== null && !done),
   };
 }
 
@@ -170,4 +222,8 @@ export function useSaveIgnore() {
 
 export function useSaveReadOnly() {
   return useConfigMutation((readOnly: ReadOnlyConfig) => api.saveReadOnly(readOnly));
+}
+
+export function useSaveCommitReferenceTemplate() {
+  return useConfigMutation((template: string) => api.saveCommitReferenceTemplate(template));
 }

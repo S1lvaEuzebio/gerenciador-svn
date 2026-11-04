@@ -1,7 +1,6 @@
-import type { Operation, OperationStep, Project, UpdatePreviewProject } from '@shared/types.ts';
-import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
+import type { Project, UpdatePreviewProject } from '@shared/types.ts';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,10 +10,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
-import { useOperation, useRefreshAll, useUpdatePreview } from '@/lib/queries';
+import { useOperationRun, useUpdatePreview } from '@/lib/queries';
 import { displayPath, incomingLabel } from '@/lib/status';
 import { cn, projectCount } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
+import { OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
 
 interface UpdateDialogProps {
@@ -104,65 +104,6 @@ function ProjectPreview({ project, item }: { project: Project; item: UpdatePrevi
   );
 }
 
-const STEP_ICON = {
-  queued: <Circle className="text-muted-foreground size-4" />,
-  running: <Loader2 className="size-4 animate-spin" />,
-  done: <CheckCircle2 className="size-4 text-green-600" />,
-  failed: <XCircle className="text-destructive size-4" />,
-};
-
-function StepOutput({ step, project }: { step: OperationStep; project: Project | undefined }) {
-  const ref = useRef<HTMLPreElement>(null);
-  // Caminhos absolutos ficam longos; na tela o projeto aparece pelo nome.
-  const output = project ? step.output.replaceAll(project.id, project.name) : step.output;
-  useEffect(() => {
-    ref.current?.scrollTo({ top: ref.current.scrollHeight });
-  }, [output]);
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        {STEP_ICON[step.state]}
-        {project?.name ?? step.projectId}
-      </div>
-      <pre
-        ref={ref}
-        className="bg-muted max-h-48 overflow-auto rounded-md px-3 py-2 font-mono text-xs whitespace-pre-wrap"
-      >
-        {output || (step.state === 'queued' ? 'na fila…' : '…')}
-      </pre>
-    </div>
-  );
-}
-
-function Progress({
-  operation,
-  projects,
-}: {
-  operation: Operation | undefined;
-  projects: Project[];
-}) {
-  if (!operation) return <Placeholder>Iniciando…</Placeholder>;
-  const failed = operation.steps.filter((s) => s.state === 'failed').length;
-  return (
-    <div className="space-y-3">
-      {operation.steps.map((step) => (
-        <StepOutput
-          key={step.projectId}
-          step={step}
-          project={projects.find((p) => p.id === step.projectId)}
-        />
-      ))}
-      {operation.done && (
-        <p className={cn('text-sm', failed > 0 ? 'text-destructive' : 'text-muted-foreground')}>
-          {failed > 0
-            ? `Terminou com falha em ${failed} projeto(s). Veja a saída acima.`
-            : 'Update concluído. Conflitos, se houver, aparecem com C na lista Locais.'}
-        </p>
-      )}
-    </div>
-  );
-}
-
 /**
  * Update com prévia: consulta o servidor, mostra revisões, arquivos, avisos e os comandos
  * exatos; só roda depois de confirmar. Cada working copy roda na sua fila, em paralelo.
@@ -175,22 +116,9 @@ export function UpdateDialog({
   locked,
   onUnlock,
 }: UpdateDialogProps) {
-  const [operationId, setOperationId] = useState<number | null>(null);
   const preview = useUpdatePreview(projects.map((p) => p.id));
-  const operation = useOperation(operationId);
-  const start = useMutation({
-    mutationFn: api.startUpdate,
-    onSuccess: (op) => setOperationId(op.id),
-  });
-  const done = operation.data?.done ?? false;
-  const running = operationId !== null && !done;
-
-  // Ao terminar, recarrega projetos (revisão), status local e o que ainda falta chegar.
-  const refreshAll = useRefreshAll();
-  const onDone = useEffectEvent(() => void refreshAll());
-  useEffect(() => {
-    if (done) onDone();
-  }, [done]);
+  // Ao terminar, o hook recarrega projetos (revisão), status local e o que ainda falta chegar.
+  const run = useOperationRun(api.startUpdate, () => {});
 
   const items = preview.data?.projects ?? [];
   const withChanges = items.filter((i) => i.command !== null);
@@ -199,23 +127,26 @@ export function UpdateDialog({
   const byId = new Map(projects.map((p) => [p.id, p]));
 
   const confirm = () =>
-    start.mutate(withChanges.map((i) => ({ projectId: i.projectId, revision: i.headRevision! })));
+    run.start(withChanges.map((i) => ({ projectId: i.projectId, revision: i.headRevision! })));
 
   return (
-    // Durante o update a janela não fecha: a saída e a recarga do status dependem dela.
-    <Dialog open={open} onOpenChange={(next) => !running && !start.isPending && onOpenChange(next)}>
+    <Dialog open={open} onOpenChange={(next) => !run.busy && onOpenChange(next)}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Update: {scopeLabel}</DialogTitle>
           <DialogDescription>
-            {operationId === null
+            {!run.started
               ? 'Confira o que vai chegar do servidor antes de confirmar.'
               : 'Saída do svn em tempo real.'}
           </DialogDescription>
         </DialogHeader>
 
-        {operationId !== null ? (
-          <Progress operation={operation.data} projects={projects} />
+        {run.started ? (
+          <OperationProgress
+            operation={run.operation}
+            projects={projects}
+            doneMessage="Update concluído. Conflitos, se houver, aparecem com C na lista Locais."
+          />
         ) : preview.isPending ? (
           <Placeholder>
             <Loader2 className="size-5 animate-spin" />
@@ -248,28 +179,26 @@ export function UpdateDialog({
             {withChanges.length > 0 && (
               <CommandBlock commands={withChanges.map((i) => i.command!)} />
             )}
-            {locked && withChanges.length > 0 && <LockNotice onUnlock={onUnlock} />}
-            {start.error && <p className="text-destructive text-sm">{start.error.message}</p>}
+            {locked && withChanges.length > 0 && <LockNotice kind="local" onUnlock={onUnlock} />}
+            {run.startError && <p className="text-destructive text-sm">{run.startError.message}</p>}
           </div>
         )}
 
         <div className="flex justify-end gap-2">
-          {operationId === null ? (
+          {!run.started ? (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
               <Button
                 onClick={confirm}
-                disabled={withChanges.length === 0 || locked || start.isPending}
+                disabled={withChanges.length === 0 || locked || run.starting}
               >
-                {start.isPending
-                  ? 'Iniciando…'
-                  : `Fazer update (${projectCount(withChanges.length)})`}
+                {run.starting ? 'Iniciando…' : `Fazer update (${projectCount(withChanges.length)})`}
               </Button>
             </>
           ) : (
-            <Button onClick={() => onOpenChange(false)} disabled={running}>
+            <Button onClick={() => onOpenChange(false)} disabled={run.busy}>
               Fechar
             </Button>
           )}

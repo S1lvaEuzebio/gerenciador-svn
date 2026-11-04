@@ -1,6 +1,6 @@
 import { LOCK_LABELS } from '@shared/labels.ts';
 import type { ReadOnlyConfig } from '@shared/schema.ts';
-import type { ProjectRemoteStatus, ProjectStatus } from '@shared/types.ts';
+import type { CommitRequest, Project, ProjectRemoteStatus, ProjectStatus } from '@shared/types.ts';
 import { useIsFetching } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
@@ -11,6 +11,8 @@ import {
   SquareTerminal,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { CommitDialog } from '@/components/CommitDialog';
+import { CommitPanel } from '@/components/CommitPanel';
 import { ConflictPanel } from '@/components/ConflictPanel';
 import { ConsolePanel } from '@/components/ConsolePanel';
 import { DiffPanel, type FileSelection } from '@/components/DiffPanel';
@@ -29,6 +31,8 @@ import {
   useRemoteStatus,
   useStatus,
 } from '@/lib/queries';
+import { useCommitMessage } from '@/lib/commit-message';
+import { useCommitSelection } from '@/lib/commit-selection';
 import { isConflict } from '@/lib/status';
 import { useStoredState } from '@/lib/use-stored-state';
 import { cn, projectCount } from '@/lib/utils';
@@ -57,6 +61,11 @@ export function App() {
   const [selection, setSelection] = useState<FileSelection | null>(null);
   const [fileTab, setFileTab] = useStoredState<FileTab>('file-tab', 'local', isFileTab);
   const [updateOpen, setUpdateOpen] = useState(false);
+  /** Update pedido pelo commit (itens desatualizados), no lugar do escopo da tela. */
+  const [updateTargets, setUpdateTargets] = useState<Project[] | null>(null);
+  /** Pedido do commit em confirmação, copiado no clique para a prévia não mudar com a lista. */
+  const [commitRequest, setCommitRequest] = useState<CommitRequest | null>(null);
+  const draft = useCommitMessage(config.data?.config.commitReferenceTemplate ?? null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('roots');
@@ -75,6 +84,7 @@ export function App() {
       ),
     [remote.data],
   );
+  const commitSelection = useCommitSelection(allProjects, statuses);
 
   const activeFilter =
     groupFilter === ALL || groupFilter === UNGROUPED || groups.some((g) => g.id === groupFilter)
@@ -216,19 +226,38 @@ export function App() {
               onManageGroups={() => setGroupsOpen(true)}
               errors={projects.data?.errors ?? []}
             />
-            <FileList
-              projects={listedProjects}
-              statuses={statuses}
-              remoteStatuses={remoteStatuses}
-              localFetching={projects.isPending || status.isFetching}
-              remoteFetching={projects.isPending || remote.isFetching}
-              error={projects.error ?? status.error}
-              remoteError={projects.error ?? remote.error}
-              tab={fileTab}
-              onTab={setFileTab}
-              selection={selection}
-              onSelect={setSelection}
-            />
+            <div className="flex min-h-0 flex-col border-r">
+              <FileList
+                projects={listedProjects}
+                statuses={statuses}
+                remoteStatuses={remoteStatuses}
+                localFetching={projects.isPending || status.isFetching}
+                remoteFetching={projects.isPending || remote.isFetching}
+                error={projects.error ?? status.error}
+                remoteError={projects.error ?? remote.error}
+                tab={fileTab}
+                onTab={setFileTab}
+                selection={selection}
+                onSelect={setSelection}
+                checked={commitSelection.checked}
+                onCheck={commitSelection.setMany}
+              />
+              <CommitPanel
+                items={commitSelection.items}
+                template={config.data.config.commitReferenceTemplate}
+                draft={draft}
+                onUncheck={(keys) => commitSelection.setMany(keys, false)}
+                onCommit={() =>
+                  setCommitRequest({
+                    items: commitSelection.items.map(({ project, change }) => ({
+                      projectId: project.id,
+                      path: change.path,
+                    })),
+                    message: draft.message,
+                  })
+                }
+              />
+            </div>
             {selection && selectedChange && isConflict(selectedChange) ? (
               <ConflictPanel
                 key={`${selection.projectId}\n${selection.path}`}
@@ -266,11 +295,39 @@ export function App() {
       {updateOpen && (
         <UpdateDialog
           open
-          onOpenChange={setUpdateOpen}
-          scopeLabel={scopeLabel}
-          projects={listedProjects}
+          onOpenChange={(open) => {
+            setUpdateOpen(open);
+            if (!open) setUpdateTargets(null);
+          }}
+          scopeLabel={
+            updateTargets
+              ? `desatualizados do commit (${projectCount(updateTargets.length)})`
+              : scopeLabel
+          }
+          projects={updateTargets ?? listedProjects}
           locked={readOnly?.local ?? true}
           onUnlock={unlockLocal}
+        />
+      )}
+      {commitRequest && (
+        <CommitDialog
+          request={commitRequest}
+          projects={allProjects}
+          locked={readOnly?.commit ?? true}
+          onUnlock={() => {
+            setCommitRequest(null);
+            openSettings('read-only');
+          }}
+          onClose={() => setCommitRequest(null)}
+          onUpdate={(ids) => {
+            setCommitRequest(null);
+            setUpdateTargets(allProjects.filter((p) => ids.includes(p.id)));
+            setUpdateOpen(true);
+          }}
+          onCommitted={(message) => {
+            draft.remember(message);
+            commitSelection.clear();
+          }}
         />
       )}
       <GroupsDialog

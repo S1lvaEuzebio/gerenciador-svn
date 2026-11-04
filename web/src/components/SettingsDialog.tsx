@@ -11,13 +11,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { useSaveIgnore, useSaveReadOnly, useSaveRoots } from '@/lib/queries';
+import { formatReference } from '@/lib/commit-message';
+import {
+  useSaveCommitReferenceTemplate,
+  useSaveIgnore,
+  useSaveReadOnly,
+  useSaveRoots,
+} from '@/lib/queries';
 
-export type SettingsTab = 'roots' | 'ignore' | 'read-only';
+export type SettingsTab = 'roots' | 'ignore' | 'read-only' | 'commit';
 
 const lines = (text: string) => text.split('\n');
 const joinLines = (values: string[]) => values.join('\n');
@@ -191,6 +198,42 @@ function ReadOnlyTab({ config }: { config: AppConfig }) {
   );
 }
 
+function CommitTab({ config }: { config: AppConfig }) {
+  const [template, setTemplate] = useState(config.commitReferenceTemplate ?? '');
+  const save = useSaveCommitReferenceTemplate();
+  const example = template.trim() === '' ? null : formatReference(template.trim(), '123');
+  return (
+    <div className="space-y-3">
+      <p className="text-muted-foreground text-sm">
+        Modelo do campo de referência da mensagem de commit. <code>{'{n}'}</code> vira o que você
+        digitar no campo; a referência fica na primeira linha da mensagem. Em branco, o campo não
+        aparece.
+      </p>
+      <div className="space-y-1.5">
+        <Label htmlFor="commit-reference">Modelo da referência</Label>
+        <Input
+          id="commit-reference"
+          value={template}
+          onChange={(e) => setTemplate(e.target.value)}
+          placeholder="tarefa #{n}"
+          className="font-mono text-xs"
+        />
+        {example && (
+          <p className="text-muted-foreground text-xs">
+            Com <code>123</code> no campo: <code>{example}</code>
+          </p>
+        )}
+      </div>
+      <SaveRow
+        onSave={() => save.mutate(template)}
+        pending={save.isPending}
+        error={save.error}
+        saved={save.isSuccess}
+      />
+    </div>
+  );
+}
+
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -224,6 +267,7 @@ export function SettingsDialog({
             <TabsTrigger value="roots">Pastas raiz</TabsTrigger>
             <TabsTrigger value="ignore">Ignorados</TabsTrigger>
             <TabsTrigger value="read-only">Somente leitura</TabsTrigger>
+            <TabsTrigger value="commit">Commit</TabsTrigger>
           </TabsList>
           <TabsContent value="roots">
             <RootsTab config={config} />
@@ -233,6 +277,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="read-only">
             <ReadOnlyTab config={config} />
+          </TabsContent>
+          <TabsContent value="commit">
+            <CommitTab config={config} />
           </TabsContent>
         </Tabs>
       </DialogContent>

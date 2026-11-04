@@ -18,13 +18,21 @@ Feito para quem mantém projetos antigos em SVN e quer uma ferramenta leve (um p
   - binário: escolher a versão inteira de um lado;
   - propriedade: ficar com o seu valor ou o do servidor;
   - árvore: o app mostra o que aconteceu e os comandos para resolver no terminal.
+- Commit de arquivos de vários projetos numa revisão só (precisam ser do mesmo repositório). A seleção vale para todos os projetos: as caixas na lista Locais vão para o painel de commit, separado por projeto. Na confirmação aparecem a lista final e os comandos exatos:
+  - arquivos novos (`?`) e faltando (`!`) marcados entram com `svn add` e `svn delete` antes do commit;
+  - uma pasta nova marcada leva o que tem dentro, menos os ignorados;
+  - pastas novas acima de um item marcado entram junto;
+  - propriedades de pasta entram como item próprio.
+
+  O commit roda com `--depth empty` e a lista explícita de caminhos. Antes, o app confere se algum item mudou no servidor e oferece o update desses projetos, sem perder a seleção. A mensagem é obrigatória, tem um campo de referência opcional (modelo configurável, ex.: `tarefa #{n}`), histórico das 20 últimas e rascunho guardado no navegador.
+
 - Grupos de projetos (um projeto pode estar em vários) para filtrar a tela.
 - Padrões de arquivos ignorados, globais ou por projeto. Ignorados aparecem recolhidos e nunca vão entrar em commit.
 - Modo somente leitura, ligado por padrão, com chaves separadas para operações locais e para commit. Com a chave ligada, o servidor recusa a operação.
 - Toda operação que grava mostra antes o comando svn exato e pede confirmação.
 - Console com todos os comandos svn que o app executou.
 
-Ainda não há commit, revert nem cleanup. Eles vêm nas próximas etapas.
+Ainda não há revert nem cleanup. Eles vêm nas próximas etapas.
 
 ## Requisitos
 
@@ -75,7 +83,8 @@ Fica em `~/.config/gerenciador-svn/config.json` (ou `$XDG_CONFIG_HOME/gerenciado
     "global": [".classpath", ".project", ".settings/"],
     "projects": {}
   },
-  "readOnly": { "local": true, "commit": true }
+  "readOnly": { "local": true, "commit": true },
+  "commitReferenceTemplate": "tarefa #{n}"
 }
 ```
 
@@ -104,9 +113,8 @@ Servem também para arquivos versionados, que o `svn:ignore` não cobre.
 
 ## Próximas etapas
 
-1. Commit de arquivos de vários projetos numa única revision.
-2. Histórico por projeto, grupo e arquivo.
-3. Revert, cleanup, consulta periódica ao servidor e inicialização pelo systemd.
+1. Histórico por projeto, grupo e arquivo.
+2. Revert, cleanup, consulta periódica ao servidor e inicialização pelo systemd.
 
 ## Licença
 

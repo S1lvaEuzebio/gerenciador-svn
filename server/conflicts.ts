@@ -15,7 +15,7 @@ import { countEols, detectEol, isBinary, MAX_DIFF_BYTES } from './diff.ts';
 import { HttpError } from './http-error.ts';
 import { relativeToProject, resolveInProject } from './projects.ts';
 import { svnConflictInfo, type ConflictFiles } from './svn/info.ts';
-import { runSvn, svnCommandLine } from './svn/run.ts';
+import { localTarget, runSvn, svnCommandLine } from './svn/run.ts';
 import { enqueue } from './wc-queue.ts';
 
 // `ignoreBOM` mantém o BOM no texto, para ele voltar ao arquivo quando a mesclagem for gravada.
@@ -188,7 +188,7 @@ const resolveArgs = (accept: ResolveAccept | 'working', absolute: string) => [
   'resolve',
   '--accept',
   accept,
-  absolute,
+  localTarget(absolute),
 ];
 
 /** `force` abre comparação e editor mesmo em arquivo maior que 1 MB. */
@@ -230,7 +230,7 @@ export async function conflictDetails(
     tree: info.tree && {
       ...info.tree,
       commands: [
-        formatCommand(['info', absolute]),
+        formatCommand(['info', localTarget(absolute)]),
         formatCommand(resolveArgs('working', absolute)),
       ],
     },
