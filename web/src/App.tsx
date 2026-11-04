@@ -1,10 +1,18 @@
+import { NO_FILTERS } from '@shared/history.ts';
 import { LOCK_LABELS } from '@shared/labels.ts';
 import type { ReadOnlyConfig } from '@shared/schema.ts';
-import type { CommitRequest, Project, ProjectRemoteStatus, ProjectStatus } from '@shared/types.ts';
+import type {
+  CommitRequest,
+  HistoryFilters,
+  Project,
+  ProjectRemoteStatus,
+  ProjectStatus,
+} from '@shared/types.ts';
 import { useIsFetching } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
   FolderCog,
+  History,
   Lock,
   RefreshCw,
   Settings,
@@ -18,7 +26,9 @@ import { ConsolePanel } from '@/components/ConsolePanel';
 import { DiffPanel, type FileSelection } from '@/components/DiffPanel';
 import { FileList, type FileTab } from '@/components/FileList';
 import { GroupsDialog } from '@/components/GroupsDialog';
+import { HistoryList, type HistoryFile } from '@/components/HistoryList';
 import { Placeholder } from '@/components/Placeholder';
+import { RevisionPanel, type RevisionSelection } from '@/components/RevisionPanel';
 import { SettingsDialog, type SettingsTab } from '@/components/SettingsDialog';
 import { ALL, Sidebar, UNGROUPED, type GroupFilter } from '@/components/Sidebar';
 import { Button } from '@/components/ui/button';
@@ -34,11 +44,13 @@ import {
 import { useCommitMessage } from '@/lib/commit-message';
 import { useCommitSelection } from '@/lib/commit-selection';
 import { isConflict } from '@/lib/status';
+import { useDebouncedValue } from '@/lib/use-debounced-value';
 import { useStoredState } from '@/lib/use-stored-state';
 import { cn, projectCount } from '@/lib/utils';
 
 const isNonEmpty = (value: string): value is string => value !== '';
-const isFileTab = (value: string): value is FileTab => value === 'local' || value === 'incoming';
+const isFileTab = (value: string): value is FileTab =>
+  value === 'local' || value === 'incoming' || value === 'history';
 
 export function App() {
   const config = useConfig();
@@ -60,6 +72,11 @@ export function App() {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selection, setSelection] = useState<FileSelection | null>(null);
   const [fileTab, setFileTab] = useStoredState<FileTab>('file-tab', 'local', isFileTab);
+  const [historyFile, setHistoryFile] = useState<HistoryFile | null>(null);
+  const [historyFilters, setHistoryFilters] = useState<HistoryFilters>(NO_FILTERS);
+  /** Filtro aplicado depois de uma pausa na digitação: cada busca consulta o servidor. */
+  const appliedFilters = useDebouncedValue(historyFilters, 400);
+  const [revision, setRevision] = useState<RevisionSelection | null>(null);
   const [updateOpen, setUpdateOpen] = useState(false);
   /** Update pedido pelo commit (itens desatualizados), no lugar do escopo da tela. */
   const [updateTargets, setUpdateTargets] = useState<Project[] | null>(null);
@@ -127,6 +144,19 @@ export function App() {
     selection?.source === 'local'
       ? statuses.get(selection.projectId)?.changes.find((c) => c.path === selection.path)
       : undefined;
+  // Arquivo novo (ainda não comitado) não tem histórico no servidor.
+  const hasHistory =
+    selection !== null &&
+    !(selectedChange && (selectedChange.item === 'unversioned' || selectedChange.item === 'added'));
+  const openFileHistory = (file: HistoryFile) => {
+    setHistoryFile(file);
+    setRevision(null);
+    setFileTab('history');
+  };
+  const historyProjects = historyFile
+    ? allProjects.filter((p) => p.id === historyFile.projectId)
+    : listedProjects;
+
   const unlockLocal = () => {
     setUpdateOpen(false);
     openSettings('read-only');
@@ -241,6 +271,32 @@ export function App() {
                 onSelect={setSelection}
                 checked={commitSelection.checked}
                 onCheck={commitSelection.setMany}
+                history={
+                  <HistoryList
+                    request={{
+                      projectIds: historyProjects.map((p) => p.id),
+                      file: historyFile?.path ?? null,
+                      ...appliedFilters,
+                    }}
+                    scopeLabel={scopeLabel}
+                    file={historyFile}
+                    onCloseFile={() => {
+                      setHistoryFile(null);
+                      setRevision(null);
+                    }}
+                    filters={historyFilters}
+                    onFilters={setHistoryFilters}
+                    projects={allProjects}
+                    selected={revision?.entry.revision ?? null}
+                    onSelect={(entry) =>
+                      setRevision({
+                        entry,
+                        repoProjectId: historyProjects[0]!.id,
+                        file: historyFile,
+                      })
+                    }
+                  />
+                }
               />
               <CommitPanel
                 items={commitSelection.items}
@@ -258,7 +314,21 @@ export function App() {
                 }
               />
             </div>
-            {selection && selectedChange && isConflict(selectedChange) ? (
+            {fileTab === 'history' ? (
+              revision ? (
+                <RevisionPanel
+                  key={`${revision.entry.revision}\n${revision.file?.projectId}\n${revision.file?.path}`}
+                  selection={revision}
+                  projects={allProjects}
+                  onFileHistory={openFileHistory}
+                />
+              ) : (
+                <Placeholder>
+                  <History className="size-8 opacity-40" />
+                  Selecione uma revisão para ver os detalhes.
+                </Placeholder>
+              )
+            ) : selection && selectedChange && isConflict(selectedChange) ? (
               <ConflictPanel
                 key={`${selection.projectId}\n${selection.path}`}
                 selection={selection}
@@ -274,6 +344,16 @@ export function App() {
                 }
                 selection={selection}
                 remote={selection ? remoteStatuses.get(selection.projectId) : undefined}
+                onHistory={
+                  hasHistory
+                    ? () =>
+                        openFileHistory({
+                          projectId: selection.projectId,
+                          projectName: selection.projectName,
+                          path: selection.path,
+                        })
+                    : undefined
+                }
               />
             )}
           </div>

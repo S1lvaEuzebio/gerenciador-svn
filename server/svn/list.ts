@@ -1,4 +1,4 @@
-import { runSvn, SvnError } from './run.ts';
+import { isNotFound, runSvn } from './run.ts';
 import { parseSvnXml } from './xml.ts';
 
 interface ListXml {
@@ -15,7 +15,7 @@ export async function svnFileSize(url: string): Promise<number | null> {
     const size = parseSvnXml<ListXml>(xml).lists?.list?.entry?.[0]?.size;
     return size === undefined ? null : Number(size);
   } catch (error) {
-    if (error instanceof SvnError && /W160013|E160013|E200009/.test(error.message)) return null;
+    if (isNotFound(error)) return null;
     throw error;
   }
 }

@@ -1,14 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useEffectEvent, useState } from 'react';
 import type { Group, IgnoreConfig, ReadOnlyConfig } from '@shared/schema.ts';
 import type {
   CommitRequest,
   ConfigResponse,
+  LogCursor,
   MergeChoice,
   Operation,
   ResolveAccept,
 } from '@shared/types.ts';
-import { api, type DiffRequest } from './api';
+import { api, type DiffRequest, type HistoryDiffRequest, type HistoryRequest } from './api';
 
 export const keys = {
   config: ['config'] as const,
@@ -16,6 +17,8 @@ export const keys = {
   status: ['status'] as const,
   remoteStatus: ['remote-status'] as const,
   diff: (request: DiffRequest) => ['diff', request] as const,
+  history: (request: HistoryRequest) => ['history', request] as const,
+  historyDiff: (request: HistoryDiffRequest) => ['history-diff', request.compare, request] as const,
   conflict: (project: string, path: string, force: boolean) =>
     ['conflict', project, path, force] as const,
   updatePreview: (projects: string[]) => ['update-preview', projects] as const,
@@ -61,6 +64,30 @@ export function useDiff(request: DiffRequest | null) {
     queryKey: keys.diff(request!),
     queryFn: () => api.diff(request!),
     enabled: request !== null,
+  });
+}
+
+/** Histórico em páginas de 50. Consulta a rede: não refaz ao focar a janela, só pelo Recarregar. */
+export function useHistory(request: HistoryRequest, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: keys.history(request),
+    queryFn: ({ pageParam }) => api.history(request, pageParam),
+    initialPageParam: null as LogCursor | null,
+    getNextPageParam: (page) => page.next,
+    enabled,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** O que uma revisão mudou não muda depois; a comparação com o arquivo atual, sim. */
+export function useHistoryDiff(request: HistoryDiffRequest | null) {
+  return useQuery({
+    queryKey: keys.historyDiff(request!),
+    queryFn: () => api.historyDiff(request!),
+    enabled: request !== null,
+    staleTime: request?.compare === 'change' ? Infinity : 0,
+    refetchOnWindowFocus: request?.compare === 'current',
   });
 }
 
@@ -114,8 +141,11 @@ export function useConsole(open: boolean) {
   });
 }
 
-/** O que muda quando a cópia local muda: status local, diffs e detalhes de conflito. */
-const LOCAL_KEYS = [keys.status, ['diff'], ['conflict']];
+/**
+ * O que muda quando a cópia local muda: status local, diffs, comparações do histórico com o
+ * arquivo atual e detalhes de conflito.
+ */
+const LOCAL_KEYS = [keys.status, ['diff'], ['history-diff', 'current'], ['conflict']];
 
 /** Rodescobre os projetos e só depois refaz os status, que usam a lista descoberta. */
 export function useRefreshAll() {
@@ -123,7 +153,7 @@ export function useRefreshAll() {
   return async () => {
     await queryClient.refetchQueries({ queryKey: keys.projects });
     await Promise.all(
-      [...LOCAL_KEYS, keys.remoteStatus].map((queryKey) =>
+      [...LOCAL_KEYS, keys.remoteStatus, ['history']].map((queryKey) =>
         queryClient.invalidateQueries({ queryKey }),
       ),
     );

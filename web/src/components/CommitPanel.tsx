@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/textarea';
 import type { useCommitMessage } from '@/lib/commit-message';
 import type { CheckedItem } from '@/lib/commit-selection';
 import { displayPath, statusLabel } from '@/lib/status';
-import { cn } from '@/lib/utils';
+import { cn, firstLine } from '@/lib/utils';
 
 interface CommitPanelProps {
   items: CheckedItem[];
@@ -16,8 +16,6 @@ interface CommitPanelProps {
   onUncheck: (keys: string[]) => void;
   onCommit: () => void;
 }
-
-const firstLine = (text: string) => text.split('\n', 1)[0] ?? '';
 
 /** Painel fixo embaixo da lista: o que está marcado para o commit, por projeto, e a mensagem. */
 export function CommitPanel({ items, template, draft, onUncheck, onCommit }: CommitPanelProps) {

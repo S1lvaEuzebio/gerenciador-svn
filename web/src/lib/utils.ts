@@ -31,3 +31,14 @@ export function formatBytes(bytes: number): string {
 export function projectCount(n: number): string {
   return `${n} ${n === 1 ? 'projeto' : 'projetos'}`;
 }
+
+export function firstLine(text: string): string {
+  return text.split('\n', 1)[0] ?? '';
+}
+
+const dateFormat = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+
+/** Data do svn (ISO) no formato local; vazia quando o svn não informa. */
+export function formatDate(iso: string): string {
+  return iso ? dateFormat.format(new Date(iso)) : '';
+}

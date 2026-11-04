@@ -7,7 +7,7 @@ import type {
   UpdatePreviewProject,
 } from '../shared/types.ts';
 import { startOperation } from './operations.ts';
-import { repoUrl } from './projects.ts';
+import { projectPathUrl, repoPathOf } from './projects.ts';
 import { projectRemoteStatus } from './remote-status.ts';
 import { svnInfo } from './svn/info.ts';
 import { svnLog } from './svn/log.ts';
@@ -32,18 +32,17 @@ async function incomingRevisions(
   incoming: IncomingChange[],
 ): Promise<{ revisions: RevisionSummary[]; truncated: boolean }> {
   if (fromRevision >= headRevision) return { revisions: [], truncated: false };
-  const base = project.relativeUrl.slice(1);
-  const targets = incoming.map((c) => (c.path === '' ? base : `${base}/${c.path}`));
+  const targets = incoming.map((c) => repoPathOf(project, c.path));
   const related = (path: string) =>
     targets.some((t) => t === path || t.startsWith(`${path}/`) || path.startsWith(`${t}/`));
   // Do mais novo para o mais antigo: se o limite cortar, somem as revisões antigas.
   const log = await svnLog(
-    repoUrl(project, '', headRevision),
+    [projectPathUrl(project, '', headRevision)],
     `${headRevision}:${fromRevision + 1}`,
     MAX_REVISIONS,
   );
   const revisions = log
-    .filter((entry) => entry.paths.some(related))
+    .filter((entry) => entry.paths.some((p) => related(p.path)))
     .map(({ revision, author, date, message }) => ({ revision, author, date, message }))
     .reverse();
   return { revisions, truncated: log.length === MAX_REVISIONS };

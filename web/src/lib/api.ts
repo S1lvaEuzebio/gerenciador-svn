@@ -8,6 +8,10 @@ import type {
   ConsoleEntry,
   DiffCompare,
   DiffResponse,
+  HistoryCompare,
+  HistoryFilters,
+  LogCursor,
+  LogPage,
   MergeChoice,
   Operation,
   ProjectsResponse,
@@ -48,6 +52,25 @@ export interface DiffRequest {
   force: boolean;
 }
 
+/** Histórico de um ou mais projetos (log unificado) ou de um arquivo de um projeto. */
+export interface HistoryRequest extends HistoryFilters {
+  projectIds: string[];
+  /** Caminho relativo ao projeto, no histórico de arquivo. */
+  file: string | null;
+}
+
+export interface HistoryDiffRequest {
+  /** Projeto que dá acesso ao repositório e, em `current`, onde está o arquivo local. */
+  projectId: string;
+  /** Caminho a partir da raiz do repositório, como o log mostra. */
+  path: string;
+  revision: number;
+  compare: HistoryCompare;
+  /** Arquivo local (relativo ao projeto) comparado em `current`. */
+  local: string | null;
+  force: boolean;
+}
+
 export const api = {
   config: () => request<ConfigResponse>('/config'),
   saveRoots: (roots: string[]) => put<ConfigResponse>('/config/roots', { roots }),
@@ -64,6 +87,29 @@ export const api = {
     if (revision !== null) params.set('rev', String(revision));
     if (force) params.set('force', '1');
     return request<DiffResponse>(`/diff?${params}`);
+  },
+  history: ({ projectIds, file, author, text }: HistoryRequest, cursor: LogCursor | null) => {
+    const params = new URLSearchParams();
+    for (const id of projectIds) params.append('project', id);
+    if (file !== null) params.set('file', file);
+    if (author) params.set('author', author);
+    if (text) params.set('text', text);
+    if (cursor) {
+      params.set('before', String(cursor.before));
+      if (cursor.path !== null) params.set('beforePath', cursor.path);
+    }
+    return request<LogPage>(`/history?${params}`);
+  },
+  historyDiff: ({ projectId, path, revision, compare, local, force }: HistoryDiffRequest) => {
+    const params = new URLSearchParams({
+      project: projectId,
+      path,
+      rev: String(revision),
+      compare,
+    });
+    if (local !== null) params.set('local', local);
+    if (force) params.set('force', '1');
+    return request<DiffResponse>(`/history/diff?${params}`);
   },
   updatePreview: (projects: string[]) => post<UpdatePreview>('/update/preview', { projects }),
   startUpdate: (targets: Array<{ projectId: string; revision: number }>) =>

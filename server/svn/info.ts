@@ -1,6 +1,6 @@
 import type { NodeKind, TreeConflict } from '../../shared/types.ts';
 import { localTarget, runSvn } from './run.ts';
-import { parseSvnXml } from './xml.ts';
+import { parseSvnXml, toNodeKind } from './xml.ts';
 
 interface ConflictXml {
   type?: string;
@@ -57,9 +57,6 @@ export interface ConflictInfo {
   conflicts: ConflictFiles[];
   tree?: Omit<TreeConflict, 'commands'>;
 }
-
-const toNodeKind = (kind: string | undefined): NodeKind =>
-  kind === 'dir' || kind === 'file' ? kind : 'unknown';
 
 function decodeUrlPath(value: string): string {
   try {

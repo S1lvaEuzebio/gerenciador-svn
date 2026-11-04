@@ -1,5 +1,5 @@
 import { isConflicted } from '@shared/status.ts';
-import type { CommitAction, IncomingChange, LocalChange } from '@shared/types.ts';
+import type { ChangeAction, CommitAction, IncomingChange, LocalChange } from '@shared/types.ts';
 
 export { isPropsOnly } from '@shared/status.ts';
 
@@ -95,4 +95,16 @@ const COMMIT_LABELS: Record<CommitAction, StatusLabel> = {
 
 export function commitActionLabel(action: CommitAction): StatusLabel {
   return COMMIT_LABELS[action];
+}
+
+const CHANGE_LABELS: Record<ChangeAction, StatusLabel> = {
+  A: ITEM_LABELS.added!,
+  D: ITEM_LABELS.deleted!,
+  M: ITEM_LABELS.modified!,
+  R: ITEM_LABELS.replaced!,
+};
+
+/** Ação de um caminho numa revisão do histórico. */
+export function changeActionLabel(action: ChangeAction): StatusLabel {
+  return CHANGE_LABELS[action];
 }

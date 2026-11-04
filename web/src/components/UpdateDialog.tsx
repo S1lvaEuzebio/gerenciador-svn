@@ -12,7 +12,7 @@ import {
 import { api } from '@/lib/api';
 import { useOperationRun, useUpdatePreview } from '@/lib/queries';
 import { displayPath, incomingLabel } from '@/lib/status';
-import { cn, projectCount } from '@/lib/utils';
+import { cn, firstLine, formatDate, projectCount } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
 import { OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
@@ -25,12 +25,6 @@ interface UpdateDialogProps {
   projects: Project[];
   locked: boolean;
   onUnlock: () => void;
-}
-
-const dateFormat = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-
-function firstLine(text: string): string {
-  return text.split('\n', 1)[0] ?? '';
 }
 
 function Warning({ children }: { children: ReactNode }) {
@@ -73,9 +67,7 @@ function ProjectPreview({ project, item }: { project: Project; item: UpdatePrevi
             <li key={r.revision} className="flex gap-2 text-xs" title={r.message}>
               <span className="shrink-0 font-mono">r{r.revision}</span>
               <span className="text-muted-foreground shrink-0">{r.author}</span>
-              <span className="text-muted-foreground shrink-0">
-                {r.date && dateFormat.format(new Date(r.date))}
-              </span>
+              <span className="text-muted-foreground shrink-0">{formatDate(r.date)}</span>
               <span className="truncate">{firstLine(r.message)}</span>
             </li>
           ))}
