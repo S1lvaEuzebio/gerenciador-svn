@@ -1,4 +1,10 @@
-import type { DiffResponse, Eol } from '@shared/types.ts';
+import type {
+  DiffCompare,
+  DiffResponse,
+  Eol,
+  ProjectRemoteStatus,
+  RemoteItem,
+} from '@shared/types.ts';
 import { FileDiff, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -11,9 +17,30 @@ import { MergeEditor, type DiffMode } from './MergeEditor';
 import { Placeholder } from './Placeholder';
 
 export interface FileSelection {
+  /** Lista de onde veio: mudanças locais ou o que vai chegar do servidor. */
+  source: 'local' | 'incoming';
   projectId: string;
   projectName: string;
   path: string;
+}
+
+const COMPARE_LABELS: Record<DiffCompare, string> = {
+  local: 'Minhas mudanças',
+  incoming: 'O que vai chegar',
+  'local-head': 'Local × servidor',
+};
+
+/** Nomes dos dois lados do diff, na ordem esquerda → direita. */
+function sideNames(compare: DiffCompare, revision: number | null): [string, string] {
+  const server = revision === null ? 'servidor' : `servidor r${revision}`;
+  switch (compare) {
+    case 'local':
+      return ['base', 'local'];
+    case 'incoming':
+      return ['base', server];
+    case 'local-head':
+      return [server, 'local'];
+  }
 }
 
 const EOL_LABEL: Record<Eol, string> = { crlf: 'CRLF', lf: 'LF', mixed: 'misto', none: '—' };
@@ -51,12 +78,17 @@ function eolNotice(eol: { original: Eol; modified: Eol }): string | null {
 function DiffBody({
   diff,
   path,
+  sides,
+  serverItem,
   mode,
   ignoreWhitespace,
   onForce,
 }: {
   diff: DiffResponse;
   path: string;
+  sides: [string, string];
+  /** O que muda no servidor neste caminho, nos diffs que envolvem o servidor. */
+  serverItem: RemoteItem | null;
   mode: DiffMode;
   ignoreWhitespace: boolean;
   onForce: () => void;
@@ -80,8 +112,8 @@ function DiffBody({
           <Placeholder>
             <p>Arquivo binário alterado.</p>
             <p className="font-mono text-xs">
-              {diff.originalSize !== null && `base ${formatBytes(diff.originalSize)} → `}local{' '}
-              {formatBytes(diff.modifiedSize)}
+              {diff.originalSize !== null && `${sides[0]} ${formatBytes(diff.originalSize)} → `}
+              {sides[1]} {formatBytes(diff.modifiedSize)}
             </p>
           </Placeholder>
           {diff.propsDiff && <PropsDiff text={diff.propsDiff} />}
@@ -92,9 +124,13 @@ function DiffBody({
         <PropsDiff text={diff.propsDiff} fill />
       ) : (
         <Placeholder>
-          {diff.item === 'unversioned'
-            ? 'Pasta não versionada.'
-            : 'Pasta sem mudanças de propriedade.'}
+          {serverItem === 'added'
+            ? 'Pasta nova no servidor.'
+            : serverItem === 'deleted'
+              ? 'Pasta apagada no servidor, com tudo o que tem dentro.'
+              : diff.item === 'unversioned'
+                ? 'Pasta não versionada.'
+                : 'Pasta sem mudanças de propriedade.'}
         </Placeholder>
       );
     case 'text': {
@@ -126,12 +162,31 @@ function DiffBody({
   }
 }
 
-/** Painel direito: diff "minhas mudanças" (cópia local × BASE) do arquivo selecionado. */
-export function DiffPanel({ selection }: { selection: FileSelection | null }) {
+/**
+ * Painel direito: diff do arquivo selecionado. Da lista local o padrão é "minhas mudanças";
+ * da lista do servidor, "o que vai chegar". Os dois oferecem comparar a cópia local com o
+ * servidor, na revisão do último status remoto do projeto (`remote`).
+ */
+export function DiffPanel({
+  selection,
+  remote,
+}: {
+  selection: FileSelection | null;
+  remote: ProjectRemoteStatus | undefined;
+}) {
+  const headRevision = remote?.headRevision ?? null;
+  const incoming = remote?.incoming.find((c) => c.path === selection?.path);
   const [force, setForce] = useState(false);
   const [mode, setMode] = useStoredState<DiffMode>('diff-mode', 'split', isDiffMode);
   const [whitespace, setWhitespace] = useStoredState<'on' | 'off'>('diff-ignore-ws', 'off', isFlag);
-  const diff = useDiff(selection, force);
+  const options: DiffCompare[] =
+    selection?.source === 'incoming' ? ['incoming', 'local-head'] : ['local', 'local-head'];
+  const [compare, setCompare] = useState<DiffCompare>(options[0]!);
+  const revision = compare === 'local' ? null : headRevision;
+  const diff = useDiff(
+    selection && { projectId: selection.projectId, path: selection.path, compare, revision, force },
+  );
+  const sides = sideNames(compare, headRevision);
 
   if (!selection) {
     return (
@@ -150,8 +205,29 @@ export function DiffPanel({ selection }: { selection: FileSelection | null }) {
             {selection.path || '(pasta do projeto)'}
           </div>
           <div className="text-muted-foreground truncate text-xs">
-            {selection.projectName} · minhas mudanças (local × base)
+            {selection.projectName} · {sides[0]} × {sides[1]}
           </div>
+        </div>
+        <div className="flex items-center rounded-md border p-0.5">
+          {options.map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setCompare(value)}
+              disabled={value !== 'local' && headRevision === null}
+              title={
+                value !== 'local' && headRevision === null
+                  ? 'Status do servidor ainda não carregado'
+                  : undefined
+              }
+              className={cn(
+                'rounded px-2 py-0.5 text-xs disabled:opacity-50',
+                compare === value ? 'bg-accent text-accent-foreground' : 'text-muted-foreground',
+              )}
+            >
+              {COMPARE_LABELS[value]}
+            </button>
+          ))}
         </div>
         <div className="flex items-center rounded-md border p-0.5">
           {(['split', 'unified'] as const).map((value) => (
@@ -189,6 +265,8 @@ export function DiffPanel({ selection }: { selection: FileSelection | null }) {
           <DiffBody
             diff={diff.data}
             path={selection.path}
+            sides={sides}
+            serverItem={compare === 'local' ? null : (incoming?.item ?? null)}
             mode={mode}
             ignoreWhitespace={whitespace === 'on'}
             onForce={() => setForce(true)}

@@ -1,30 +1,52 @@
 import { LOCK_LABELS } from '@shared/labels.ts';
 import type { ReadOnlyConfig } from '@shared/schema.ts';
-import type { ProjectStatus } from '@shared/types.ts';
+import type { ProjectRemoteStatus, ProjectStatus } from '@shared/types.ts';
 import { useIsFetching } from '@tanstack/react-query';
-import { FolderCog, Lock, RefreshCw, Settings, SquareTerminal } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  FolderCog,
+  Lock,
+  RefreshCw,
+  Settings,
+  SquareTerminal,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { ConflictPanel } from '@/components/ConflictPanel';
 import { ConsolePanel } from '@/components/ConsolePanel';
 import { DiffPanel, type FileSelection } from '@/components/DiffPanel';
-import { FileList } from '@/components/FileList';
+import { FileList, type FileTab } from '@/components/FileList';
 import { GroupsDialog } from '@/components/GroupsDialog';
 import { Placeholder } from '@/components/Placeholder';
 import { SettingsDialog, type SettingsTab } from '@/components/SettingsDialog';
 import { ALL, Sidebar, UNGROUPED, type GroupFilter } from '@/components/Sidebar';
 import { Button } from '@/components/ui/button';
-import { keys, useConfig, useProjects, useRefreshAll, useStatus } from '@/lib/queries';
+import { UpdateDialog } from '@/components/UpdateDialog';
+import {
+  keys,
+  useConfig,
+  useProjects,
+  useRefreshAll,
+  useRemoteStatus,
+  useStatus,
+} from '@/lib/queries';
+import { isConflict } from '@/lib/status';
 import { useStoredState } from '@/lib/use-stored-state';
-import { cn } from '@/lib/utils';
+import { cn, projectCount } from '@/lib/utils';
 
 const isNonEmpty = (value: string): value is string => value !== '';
+const isFileTab = (value: string): value is FileTab => value === 'local' || value === 'incoming';
 
 export function App() {
   const config = useConfig();
   const projects = useProjects();
   const status = useStatus(projects.isSuccess);
+  const remote = useRemoteStatus(projects.isSuccess);
   const refreshAll = useRefreshAll();
   const refreshing =
-    useIsFetching({ queryKey: keys.status }) + useIsFetching({ queryKey: keys.projects }) > 0;
+    useIsFetching({ queryKey: keys.status }) +
+      useIsFetching({ queryKey: keys.remoteStatus }) +
+      useIsFetching({ queryKey: keys.projects }) >
+    0;
 
   const [groupFilter, setGroupFilter] = useStoredState<GroupFilter>(
     'group-filter',
@@ -33,6 +55,8 @@ export function App() {
   );
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selection, setSelection] = useState<FileSelection | null>(null);
+  const [fileTab, setFileTab] = useStoredState<FileTab>('file-tab', 'local', isFileTab);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('roots');
@@ -43,6 +67,13 @@ export function App() {
   const statuses = useMemo(
     () => new Map<string, ProjectStatus>(status.data?.statuses.map((s) => [s.projectId, s]) ?? []),
     [status.data],
+  );
+  const remoteStatuses = useMemo(
+    () =>
+      new Map<string, ProjectRemoteStatus>(
+        remote.data?.statuses.map((s) => [s.projectId, s]) ?? [],
+      ),
+    [remote.data],
   );
 
   const activeFilter =
@@ -68,6 +99,29 @@ export function App() {
     setSettingsOpen(true);
   };
 
+  // Update vale para o projeto selecionado ou, sem seleção, para todos os projetos visíveis.
+  const scopeProject = listedProjects.length === 1 && selectedProject ? listedProjects[0] : null;
+  const scopeLabel = scopeProject
+    ? scopeProject.name
+    : activeFilter === ALL
+      ? `todos (${projectCount(visibleProjects.length)})`
+      : activeFilter === UNGROUPED
+        ? `sem grupo (${projectCount(visibleProjects.length)})`
+        : `${groups.find((g) => g.id === activeFilter)?.name} (${projectCount(visibleProjects.length)})`;
+  const incomingInScope = listedProjects.reduce(
+    (sum, p) => sum + (remoteStatuses.get(p.id)?.incoming.length ?? 0),
+    0,
+  );
+
+  const selectedChange =
+    selection?.source === 'local'
+      ? statuses.get(selection.projectId)?.changes.find((c) => c.path === selection.path)
+      : undefined;
+  const unlockLocal = () => {
+    setUpdateOpen(false);
+    openSettings('read-only');
+  };
+
   const readOnly = config.data?.config.readOnly;
   const locks = readOnly
     ? (Object.keys(LOCK_LABELS) as (keyof ReadOnlyConfig)[])
@@ -87,9 +141,27 @@ export function App() {
       <header className="flex items-center gap-2 border-b px-3 py-2">
         <h1 className="text-sm font-semibold">Gerenciador SVN</h1>
         <div className="flex-1" />
-        <Button variant="outline" size="sm" onClick={refreshAll} disabled={noRoots}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={refreshAll}
+          disabled={noRoots}
+          title="Recarrega projetos, mudanças locais e o que há de novo no servidor"
+        >
           <RefreshCw className={cn(refreshing && 'animate-spin')} />
-          Atualizar
+          Recarregar
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => setUpdateOpen(true)}
+          disabled={noRoots || listedProjects.length === 0}
+          title={`Update: ${scopeLabel}`}
+        >
+          <ArrowDownToLine />
+          Update
+          {incomingInScope > 0 && (
+            <span className="bg-primary-foreground/20 rounded px-1 text-xs">{incomingInScope}</span>
+          )}
         </Button>
         <Button
           variant={consoleOpen ? 'secondary' : 'ghost'}
@@ -132,6 +204,7 @@ export function App() {
               projects={allProjects}
               visibleProjects={visibleProjects}
               statuses={statuses}
+              remoteStatuses={remoteStatuses}
               groups={groups}
               groupFilter={activeFilter}
               onGroupFilter={(filter) => {
@@ -146,15 +219,34 @@ export function App() {
             <FileList
               projects={listedProjects}
               statuses={statuses}
-              loading={projects.isPending || status.isPending}
+              remoteStatuses={remoteStatuses}
+              localFetching={projects.isPending || status.isFetching}
+              remoteFetching={projects.isPending || remote.isFetching}
               error={projects.error ?? status.error}
+              remoteError={projects.error ?? remote.error}
+              tab={fileTab}
+              onTab={setFileTab}
               selection={selection}
               onSelect={setSelection}
             />
-            <DiffPanel
-              key={selection ? `${selection.projectId}\n${selection.path}` : 'none'}
-              selection={selection}
-            />
+            {selection && selectedChange && isConflict(selectedChange) ? (
+              <ConflictPanel
+                key={`${selection.projectId}\n${selection.path}`}
+                selection={selection}
+                locked={readOnly?.local ?? true}
+                onUnlock={unlockLocal}
+              />
+            ) : (
+              <DiffPanel
+                key={
+                  selection
+                    ? `${selection.source}\n${selection.projectId}\n${selection.path}`
+                    : 'none'
+                }
+                selection={selection}
+                remote={selection ? remoteStatuses.get(selection.projectId) : undefined}
+              />
+            )}
           </div>
         )}
       </main>
@@ -171,6 +263,16 @@ export function App() {
         configPath={config.data.configPath}
         projects={allProjects}
       />
+      {updateOpen && (
+        <UpdateDialog
+          open
+          onOpenChange={setUpdateOpen}
+          scopeLabel={scopeLabel}
+          projects={listedProjects}
+          locked={readOnly?.local ?? true}
+          onUnlock={unlockLocal}
+        />
+      )}
       <GroupsDialog
         key={groupsOpen ? 'groups-open' : 'groups-closed'}
         open={groupsOpen}

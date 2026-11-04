@@ -1,6 +1,6 @@
 import type { Group } from '@shared/schema.ts';
-import type { Project, ProjectStatus, RootError } from '@shared/types.ts';
-import { AlertTriangle, ArrowUp, Settings2 } from 'lucide-react';
+import type { Project, ProjectRemoteStatus, ProjectStatus, RootError } from '@shared/types.ts';
+import { AlertTriangle, ArrowDown, ArrowUp, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { isConflict } from '@/lib/status';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,7 @@ interface SidebarProps {
   projects: Project[];
   visibleProjects: Project[];
   statuses: Map<string, ProjectStatus>;
+  remoteStatuses: Map<string, ProjectRemoteStatus>;
   groups: Group[];
   groupFilter: GroupFilter;
   onGroupFilter: (filter: GroupFilter) => void;
@@ -59,6 +60,7 @@ export function Sidebar({
   projects,
   visibleProjects,
   statuses,
+  remoteStatuses,
   groups,
   groupFilter,
   onGroupFilter,
@@ -114,7 +116,10 @@ export function Sidebar({
         )}
         {visibleProjects.map((project) => {
           const status = statuses.get(project.id);
+          const remote = remoteStatuses.get(project.id);
           const { local, conflicts } = counts(status);
+          const incoming = remote?.incoming.length ?? 0;
+          const error = [status?.error, remote?.error].filter(Boolean).join('\n');
           const active = selectedProject === project.id;
           return (
             <button
@@ -133,8 +138,8 @@ export function Sidebar({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5 pt-0.5 text-xs">
-                {status?.error && (
-                  <span title={status.error}>
+                {error && (
+                  <span title={error}>
                     <AlertTriangle className="text-destructive size-3.5" />
                   </span>
                 )}
@@ -145,6 +150,15 @@ export function Sidebar({
                   >
                     <AlertTriangle className="size-3" />
                     {conflicts}
+                  </span>
+                )}
+                {incoming > 0 && (
+                  <span
+                    className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400"
+                    title={`${incoming} mudanças no servidor`}
+                  >
+                    <ArrowDown className="size-3" />
+                    {incoming}
                   </span>
                 )}
                 {local > 0 && (
