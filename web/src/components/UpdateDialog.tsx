@@ -1,7 +1,7 @@
-import type { Operation, OperationStep, Project, UpdatePreviewProject } from '@shared/types.ts';
+import type { Project, UpdatePreviewProject } from '@shared/types.ts';
 import { useMutation } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from 'react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
+import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,6 +15,7 @@ import { useOperation, useRefreshAll, useUpdatePreview } from '@/lib/queries';
 import { displayPath, incomingLabel } from '@/lib/status';
 import { cn, projectCount } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
+import { OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
 
 interface UpdateDialogProps {
@@ -104,65 +105,6 @@ function ProjectPreview({ project, item }: { project: Project; item: UpdatePrevi
   );
 }
 
-const STEP_ICON = {
-  queued: <Circle className="text-muted-foreground size-4" />,
-  running: <Loader2 className="size-4 animate-spin" />,
-  done: <CheckCircle2 className="size-4 text-green-600" />,
-  failed: <XCircle className="text-destructive size-4" />,
-};
-
-function StepOutput({ step, project }: { step: OperationStep; project: Project | undefined }) {
-  const ref = useRef<HTMLPreElement>(null);
-  // Caminhos absolutos ficam longos; na tela o projeto aparece pelo nome.
-  const output = project ? step.output.replaceAll(project.id, project.name) : step.output;
-  useEffect(() => {
-    ref.current?.scrollTo({ top: ref.current.scrollHeight });
-  }, [output]);
-  return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        {STEP_ICON[step.state]}
-        {project?.name ?? step.projectId}
-      </div>
-      <pre
-        ref={ref}
-        className="bg-muted max-h-48 overflow-auto rounded-md px-3 py-2 font-mono text-xs whitespace-pre-wrap"
-      >
-        {output || (step.state === 'queued' ? 'na fila…' : '…')}
-      </pre>
-    </div>
-  );
-}
-
-function Progress({
-  operation,
-  projects,
-}: {
-  operation: Operation | undefined;
-  projects: Project[];
-}) {
-  if (!operation) return <Placeholder>Iniciando…</Placeholder>;
-  const failed = operation.steps.filter((s) => s.state === 'failed').length;
-  return (
-    <div className="space-y-3">
-      {operation.steps.map((step) => (
-        <StepOutput
-          key={step.projectId}
-          step={step}
-          project={projects.find((p) => p.id === step.projectId)}
-        />
-      ))}
-      {operation.done && (
-        <p className={cn('text-sm', failed > 0 ? 'text-destructive' : 'text-muted-foreground')}>
-          {failed > 0
-            ? `Terminou com falha em ${failed} projeto(s). Veja a saída acima.`
-            : 'Update concluído. Conflitos, se houver, aparecem com C na lista Locais.'}
-        </p>
-      )}
-    </div>
-  );
-}
-
 /**
  * Update com prévia: consulta o servidor, mostra revisões, arquivos, avisos e os comandos
  * exatos; só roda depois de confirmar. Cada working copy roda na sua fila, em paralelo.
@@ -215,7 +157,11 @@ export function UpdateDialog({
         </DialogHeader>
 
         {operationId !== null ? (
-          <Progress operation={operation.data} projects={projects} />
+          <OperationProgress
+            operation={operation.data}
+            projects={projects}
+            doneMessage="Update concluído. Conflitos, se houver, aparecem com C na lista Locais."
+          />
         ) : preview.isPending ? (
           <Placeholder>
             <Loader2 className="size-5 animate-spin" />
@@ -248,7 +194,7 @@ export function UpdateDialog({
             {withChanges.length > 0 && (
               <CommandBlock commands={withChanges.map((i) => i.command!)} />
             )}
-            {locked && withChanges.length > 0 && <LockNotice onUnlock={onUnlock} />}
+            {locked && withChanges.length > 0 && <LockNotice kind="local" onUnlock={onUnlock} />}
             {start.error && <p className="text-destructive text-sm">{start.error.message}</p>}
           </div>
         )}

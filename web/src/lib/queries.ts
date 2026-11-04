@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Group, IgnoreConfig, ReadOnlyConfig } from '@shared/schema.ts';
-import type { ConfigResponse, MergeChoice, ResolveAccept } from '@shared/types.ts';
+import type { CommitRequest, ConfigResponse, MergeChoice, ResolveAccept } from '@shared/types.ts';
 import { api, type DiffRequest } from './api';
 
 export const keys = {
@@ -12,6 +12,7 @@ export const keys = {
   conflict: (project: string, path: string, force: boolean) =>
     ['conflict', project, path, force] as const,
   updatePreview: (projects: string[]) => ['update-preview', projects] as const,
+  commitPreview: (commit: CommitRequest) => ['commit-preview', commit] as const,
   operation: (id: number) => ['operation', id] as const,
   console: ['console'] as const,
 };
@@ -68,6 +69,16 @@ export function useUpdatePreview(projects: string[]) {
   return useQuery({
     queryKey: keys.updatePreview(projects),
     queryFn: () => api.updatePreview(projects),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Prévia do commit: lista final, desatualizados e comandos. Refeita a cada abertura. */
+export function useCommitPreview(commit: CommitRequest) {
+  return useQuery({
+    queryKey: keys.commitPreview(commit),
+    queryFn: () => api.commitPreview(commit),
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
@@ -170,4 +181,8 @@ export function useSaveIgnore() {
 
 export function useSaveReadOnly() {
   return useConfigMutation((readOnly: ReadOnlyConfig) => api.saveReadOnly(readOnly));
+}
+
+export function useSaveCommitReference() {
+  return useConfigMutation((reference: string | null) => api.saveCommitReference(reference));
 }

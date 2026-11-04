@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import express, { type ErrorRequestHandler } from 'express';
 import { z } from 'zod';
 import {
+  commitReferenceSchema,
+  commitRequestSchema,
   diffCompareSchema,
   groupSchema,
   ignoreSchema,
@@ -12,6 +14,7 @@ import {
 } from '../shared/schema.ts';
 import type {
   CommandResult,
+  CommitPreview,
   ConfigResponse,
   ConflictDetails,
   ConsoleEntry,
@@ -22,6 +25,7 @@ import type {
   StatusResponse,
   UpdatePreview,
 } from '../shared/types.ts';
+import { commitPreview, startCommit } from './commit.ts';
 import { cleanPatterns, configPath, getConfig, updateConfig } from './config.ts';
 import { conflictDetails, resolveConflict, saveMerge } from './conflicts.ts';
 import { clearEntries, listEntries } from './console-log.ts';
@@ -104,6 +108,12 @@ export function createApp(options: { port: number; dev: boolean }) {
     res.json(configResponse());
   });
 
+  api.put('/config/commit', async (req, res) => {
+    const { reference } = z.object({ reference: commitReferenceSchema }).parse(req.body);
+    await updateConfig({ commitReference: reference });
+    res.json(configResponse());
+  });
+
   api.get('/projects', async (_req, res) => {
     res.json((await discoverProjects()) satisfies ProjectsResponse);
   });
@@ -154,6 +164,20 @@ export function createApp(options: { port: number; dev: boolean }) {
 
   api.get('/operations/:id', (req, res) => {
     res.json(getOperation(positiveInt.parse(req.params.id)) satisfies Operation);
+  });
+
+  api.post('/commit/preview', async (req, res) => {
+    const request = commitRequestSchema.parse(req.body);
+    res.json((await commitPreview(request, getConfig())) satisfies CommitPreview);
+  });
+
+  api.post('/commit', requireUnlocked('commit'), async (req, res) => {
+    const { fingerprint, ...request } = commitRequestSchema
+      .extend({ fingerprint: z.string().min(1) })
+      .parse(req.body);
+    res
+      .status(202)
+      .json((await startCommit(request, getConfig(), fingerprint)) satisfies Operation);
   });
 
   api.get('/conflict', async (req, res) => {

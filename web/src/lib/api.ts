@@ -1,6 +1,8 @@
 import type { Group, IgnoreConfig, ReadOnlyConfig } from '@shared/schema.ts';
 import type {
   CommandResult,
+  CommitPreview,
+  CommitRequest,
   ConfigResponse,
   ConflictDetails,
   ConsoleEntry,
@@ -52,6 +54,8 @@ export const api = {
   saveGroups: (groups: Group[]) => put<ConfigResponse>('/config/groups', { groups }),
   saveIgnore: (ignore: IgnoreConfig) => put<ConfigResponse>('/config/ignore', ignore),
   saveReadOnly: (readOnly: ReadOnlyConfig) => put<ConfigResponse>('/config/read-only', readOnly),
+  saveCommitReference: (reference: string | null) =>
+    put<ConfigResponse>('/config/commit', { reference }),
   projects: () => request<ProjectsResponse>('/projects'),
   status: () => request<StatusResponse>('/status'),
   remoteStatus: () => request<RemoteStatusResponse>('/remote-status'),
@@ -65,6 +69,9 @@ export const api = {
   startUpdate: (targets: Array<{ projectId: string; revision: number }>) =>
     post<Operation>('/update', { targets }),
   operation: (id: number) => request<Operation>(`/operations/${id}`),
+  commitPreview: (commit: CommitRequest) => post<CommitPreview>('/commit/preview', commit),
+  startCommit: (commit: CommitRequest, fingerprint: string) =>
+    post<Operation>('/commit', { ...commit, fingerprint }),
   conflict: (project: string, path: string, force: boolean) =>
     request<ConflictDetails>(
       `/conflict?${new URLSearchParams({ project, path, force: force ? '1' : '0' })}`,

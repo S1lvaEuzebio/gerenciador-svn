@@ -315,7 +315,7 @@ export function ConflictPanel({
       {header}
       {locked && accepts.length > 0 && (
         <div className="border-b p-2">
-          <LockNotice onUnlock={onUnlock} />
+          <LockNotice kind="local" onUnlock={onUnlock} />
         </div>
       )}
       {data.tree && text && <TreeConflictView tree={data.tree} />}

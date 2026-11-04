@@ -24,6 +24,17 @@ export const readOnlySchema = z.object({
   commit: z.boolean(),
 });
 
+/**
+ * Modelo do campo de referência da mensagem de commit (ex.: `tarefa #{n}`); `{n}` vira o que for
+ * digitado. Sem modelo, o campo não aparece.
+ */
+export const commitReferenceSchema = z
+  .string()
+  .trim()
+  .max(80)
+  .nullable()
+  .transform((value) => (value === '' ? null : value));
+
 /** `looseObject`: chaves desconhecidas (de versões futuras, por exemplo) são preservadas ao salvar. */
 export const configSchema = z.looseObject({
   port: z.number().int().min(1024).max(65535).default(DEFAULT_PORT),
@@ -31,6 +42,7 @@ export const configSchema = z.looseObject({
   groups: z.array(groupSchema).default([]),
   ignore: ignoreSchema.default({ global: DEFAULT_IGNORE_PATTERNS, projects: {} }),
   readOnly: readOnlySchema.default({ local: true, commit: true }),
+  commitReference: commitReferenceSchema.default(null),
 });
 
 /**
@@ -47,6 +59,12 @@ export const resolveAcceptSchema = z.enum([
   'theirs-full',
 ]);
 
+/** Caminhos marcados para o commit e a mensagem final. */
+export const commitRequestSchema = z.object({
+  items: z.array(z.object({ projectId: z.string().min(1), path: z.string() })).min(1),
+  message: z.string(),
+});
+
 /** Escolha para um trecho em conflito no editor de mesclagem. */
 export const mergeChoiceSchema = z.union([
   z.object({ pick: z.enum(['mine', 'theirs', 'both']) }),
@@ -60,3 +78,4 @@ export type ReadOnlyConfig = z.infer<typeof readOnlySchema>;
 export type DiffCompare = z.infer<typeof diffCompareSchema>;
 export type ResolveAccept = z.infer<typeof resolveAcceptSchema>;
 export type MergeChoice = z.infer<typeof mergeChoiceSchema>;
+export type CommitRequest = z.infer<typeof commitRequestSchema>;

@@ -1,3 +1,4 @@
+import type { ReadOnlyConfig } from '@shared/schema.ts';
 import { Lock } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
@@ -23,12 +24,23 @@ export function CommandBlock({ commands }: { commands: string[] }) {
   );
 }
 
-/** Aviso de que o modo somente leitura trava as operações locais, com atalho para destravar. */
-export function LockNotice({ onUnlock }: { onUnlock: () => void }) {
+const LOCK_MESSAGES: Record<keyof ReadOnlyConfig, string> = {
+  local: 'Operações locais travadas pelo modo somente leitura.',
+  commit: 'Commit travado pelo modo somente leitura.',
+};
+
+/** Aviso de que o modo somente leitura trava a operação, com atalho para destravar. */
+export function LockNotice({
+  kind,
+  onUnlock,
+}: {
+  kind: keyof ReadOnlyConfig;
+  onUnlock: () => void;
+}) {
   return (
     <div className="bg-warning text-warning-foreground flex items-center gap-2 rounded-md px-3 py-2 text-sm">
       <Lock className="size-4 shrink-0" />
-      <span className="flex-1">Operações locais travadas pelo modo somente leitura.</span>
+      <span className="flex-1">{LOCK_MESSAGES[kind]}</span>
       <Button variant="outline" size="xs" onClick={onUnlock}>
         Destravar…
       </Button>

@@ -46,6 +46,16 @@ export function isConflict(change: LocalChange): boolean {
   return change.item === 'conflicted' || change.props === 'conflicted' || change.treeConflict;
 }
 
+/** Pode ser marcado para o commit: ignorado nunca entra, conflito precisa ser resolvido antes. */
+export function isCommittable(change: LocalChange): boolean {
+  return !change.ignored && !isConflict(change);
+}
+
+/** Chave de um item na seleção do commit. */
+export function commitKey(projectId: string, path: string): string {
+  return `${projectId}\n${path}`;
+}
+
 /** Só mudança de propriedade, sem mudança de conteúdo. */
 export function isPropsOnly(change: LocalChange): boolean {
   return (change.item === 'normal' || change.item === 'none') && change.props === 'modified';

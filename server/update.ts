@@ -90,8 +90,10 @@ export function startUpdate(targets: Array<{ project: Project; revision: number 
   return startOperation(
     'Update',
     targets.map(({ project, revision }) => ({
-      projectId: project.id,
+      label: project.name,
+      projectIds: [project.id],
       args: updateArgs(project, revision),
     })),
+    'parallel',
   );
 }

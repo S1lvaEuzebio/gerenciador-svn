@@ -7,7 +7,16 @@ import type {
 } from '@shared/types.ts';
 import { AlertTriangle, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { displayPath, incomingLabel, statusLabel, type StatusLabel } from '@/lib/status';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  commitKey,
+  displayPath,
+  incomingLabel,
+  isCommittable,
+  isConflict,
+  statusLabel,
+  type StatusLabel,
+} from '@/lib/status';
 import { cn } from '@/lib/utils';
 import type { FileSelection } from './DiffPanel';
 
@@ -26,6 +35,9 @@ interface FileListProps {
   onTab: (tab: FileTab) => void;
   selection: FileSelection | null;
   onSelect: (selection: FileSelection) => void;
+  /** Itens marcados para o commit (`commitKey`). */
+  checked: Set<string>;
+  onCheck: (keys: string[], checked: boolean) => void;
 }
 
 function splitPath(path: string): { name: string; dir: string } {
@@ -39,6 +51,7 @@ function FileRow({
   path,
   status,
   ignored,
+  leading,
   badge,
   selected,
   onClick,
@@ -46,48 +59,58 @@ function FileRow({
   path: string;
   status: StatusLabel;
   ignored: boolean;
+  /** Fica fora do botão da linha (ex.: caixa de seleção do commit). */
+  leading?: ReactNode;
   badge?: ReactNode;
   selected: boolean;
   onClick: () => void;
 }) {
   const { name, dir } = splitPath(path);
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={`${status.label}: ${path}`}
+    <div
       className={cn(
-        'flex w-full items-baseline gap-2 rounded px-2 py-0.5 text-left',
+        'flex items-center gap-2 rounded pl-2',
         selected ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50',
         ignored && 'opacity-60',
       )}
     >
-      <span className={cn('w-3 shrink-0 font-mono text-xs', status.className)}>
-        {status.letter}
-      </span>
-      <span className="shrink-0 font-mono text-xs">{name}</span>
-      <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[11px]">
-        {dir}
-      </span>
-      {badge}
-    </button>
+      {leading}
+      <button
+        type="button"
+        onClick={onClick}
+        title={`${status.label}: ${path}`}
+        className="flex min-w-0 flex-1 items-baseline gap-2 py-0.5 pr-2 text-left"
+      >
+        <span className={cn('w-3 shrink-0 font-mono text-xs', status.className)}>
+          {status.letter}
+        </span>
+        <span className="shrink-0 font-mono text-xs">{name}</span>
+        <span className="text-muted-foreground min-w-0 flex-1 truncate font-mono text-[11px]">
+          {dir}
+        </span>
+        {badge}
+      </button>
+    </div>
   );
 }
 
 function SectionHeader({
   name,
   count,
+  leading,
   detail,
   error,
 }: {
   name: string;
   count: number;
+  leading?: ReactNode;
   detail?: string;
   error?: string;
 }) {
   return (
     <>
       <div className="flex items-center gap-2 px-2 py-1">
+        {leading}
         <span className="truncate text-xs font-semibold">{name}</span>
         <span className="text-muted-foreground text-xs">{count}</span>
         {detail && (
@@ -140,7 +163,12 @@ function LocalSections({
   statuses,
   selection,
   onSelect,
-}: Pick<FileListProps, 'projects' | 'statuses' | 'selection' | 'onSelect'>) {
+  checked,
+  onCheck,
+}: Pick<
+  FileListProps,
+  'projects' | 'statuses' | 'selection' | 'onSelect' | 'checked' | 'onCheck'
+>) {
   const [expandedIgnored, setExpandedIgnored] = useState<Set<string>>(new Set());
 
   const toggleIgnored = (projectId: string) => {
@@ -163,12 +191,29 @@ function LocalSections({
     const visible = status!.changes.filter((c) => !c.ignored);
     const ignored = status!.changes.filter((c) => c.ignored);
     const showIgnored = expandedIgnored.has(project.id);
+    const committable = visible.filter(isCommittable).map((c) => commitKey(project.id, c.path));
+    const checkedCount = committable.filter((key) => checked.has(key)).length;
     const row = (change: LocalChange) => (
       <FileRow
         key={change.path}
         path={displayPath(change)}
         status={statusLabel(change)}
         ignored={change.ignored}
+        leading={
+          change.ignored ? (
+            <span className="size-4 shrink-0" />
+          ) : (
+            <Checkbox
+              aria-label={`Marcar ${displayPath(change)} para o commit`}
+              title={isConflict(change) ? 'Resolva o conflito antes de comitar' : undefined}
+              disabled={!isCommittable(change)}
+              checked={checked.has(commitKey(project.id, change.path))}
+              onCheckedChange={(value) =>
+                onCheck([commitKey(project.id, change.path)], value === true)
+              }
+            />
+          )
+        }
         selected={
           selection?.source === 'local' &&
           selection.projectId === project.id &&
@@ -187,7 +232,25 @@ function LocalSections({
 
     return (
       <div key={project.id} className="px-1 pb-2">
-        <SectionHeader name={project.name} count={visible.length} error={status!.error} />
+        <SectionHeader
+          name={project.name}
+          count={visible.length}
+          error={status!.error}
+          leading={
+            <Checkbox
+              aria-label={`Marcar todos de ${project.name} para o commit`}
+              disabled={committable.length === 0}
+              checked={
+                checkedCount === 0
+                  ? false
+                  : checkedCount === committable.length
+                    ? true
+                    : 'indeterminate'
+              }
+              onCheckedChange={() => onCheck(committable, checkedCount < committable.length)}
+            />
+          }
+        />
         {visible.map(row)}
         {ignored.length > 0 && (
           <>
@@ -295,6 +358,8 @@ export function FileList({
   onTab,
   selection,
   onSelect,
+  checked,
+  onCheck,
 }: FileListProps) {
   const visibleIds = new Set(projects.map((p) => p.id));
   const localCount = [...statuses.values()]
@@ -310,7 +375,7 @@ export function FileList({
       : remoteFetching && remoteStatuses.size === 0;
 
   return (
-    <section className="flex h-full min-h-0 flex-col border-r">
+    <section className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-4 border-b px-3">
         <TabButton
           active={tab === 'local'}
@@ -339,6 +404,8 @@ export function FileList({
               statuses={statuses}
               selection={selection}
               onSelect={onSelect}
+              checked={checked}
+              onCheck={onCheck}
             />
           ) : (
             <IncomingSections
