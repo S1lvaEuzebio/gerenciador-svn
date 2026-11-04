@@ -95,10 +95,36 @@ export function relativeToProject(project: Project, absolute: string): string {
   return relative(project.id, absolute).split(sep).join('/');
 }
 
+/** Caminho do projeto no repositório: `^/projeto/trunk` → `/projeto/trunk`. */
+const projectBase = (project: Project) => project.relativeUrl.slice(1);
+
+/** Caminho do projeto → caminho no repositório (`a.txt` → `/projeto/trunk/a.txt`). */
+export function repoPathOf(project: Project, relativePath: string): string {
+  const base = projectBase(project);
+  if (relativePath === '') return base;
+  return base.endsWith('/') ? `${base}${relativePath}` : `${base}/${relativePath}`;
+}
+
+/** Caminho no repositório → caminho relativo ao projeto; `null` se cai fora dele. */
+export function projectPathOf(project: Project, repoPath: string): string | null {
+  const base = projectBase(project);
+  if (repoPath === base) return '';
+  const prefix = base.endsWith('/') ? base : `${base}/`;
+  return repoPath.startsWith(prefix) ? repoPath.slice(prefix.length) : null;
+}
+
 const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
 
-/** URL do caminho no repositório, presa à revisão (`url@rev`). */
+/** URL de um caminho do repositório (`/projeto/trunk/a.txt`), presa à revisão (`url@rev`). */
+export function repositoryUrl(
+  project: Project,
+  repoPath: string,
+  revision: number | 'HEAD',
+): string {
+  return `${project.repoRootUrl}${encodePath(repoPath)}@${revision}`;
+}
+
+/** URL de um caminho do projeto, presa à revisão. */
 export function repoUrl(project: Project, relativePath: string, revision: number): string {
-  const base = `${project.repoRootUrl}${encodePath(project.relativeUrl.slice(1))}`;
-  return `${relativePath === '' ? base : `${base}/${encodePath(relativePath)}`}@${revision}`;
+  return repositoryUrl(project, repoPathOf(project, relativePath), revision);
 }

@@ -15,6 +15,11 @@ export class SvnError extends Error {
   }
 }
 
+/** Caminho que não existe na revisão pedida do servidor (ex.: apagado lá). */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof SvnError && /W160013|E160013|W170000/.test(error.message);
+}
+
 /** Argumentos completos: `--non-interactive` logo depois do subcomando. */
 function svnArgs(args: string[]): string[] {
   const [subcommand, ...rest] = args;

@@ -20,7 +20,7 @@ import {
 import { cn } from '@/lib/utils';
 import type { FileSelection } from './DiffPanel';
 
-export type FileTab = FileSelection['source'];
+export type FileTab = FileSelection['source'] | 'history';
 
 interface FileListProps {
   projects: Project[];
@@ -38,6 +38,8 @@ interface FileListProps {
   /** Itens marcados para o commit (`commitKey`). */
   checked: Set<string>;
   onCheck: (keys: string[], checked: boolean) => void;
+  /** Conteúdo da aba Histórico. */
+  history: ReactNode;
 }
 
 function splitPath(path: string): { name: string; dir: string } {
@@ -345,7 +347,10 @@ function IncomingSections({
   ));
 }
 
-/** Coluna do meio: mudanças locais ou o que vai chegar do servidor, separadas por projeto. */
+/**
+ * Coluna do meio: mudanças locais ou o que vai chegar do servidor, separadas por projeto, ou o
+ * histórico.
+ */
 export function FileList({
   projects,
   statuses,
@@ -360,6 +365,7 @@ export function FileList({
   onSelect,
   checked,
   onCheck,
+  history,
 }: FileListProps) {
   const visibleIds = new Set(projects.map((p) => p.id));
   const localCount = [...statuses.values()]
@@ -391,31 +397,42 @@ export function FileList({
           loading={remoteFetching}
           onClick={() => onTab('incoming')}
         />
+        <TabButton
+          active={tab === 'history'}
+          label="Histórico"
+          count={null}
+          loading={false}
+          onClick={() => onTab('history')}
+        />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto py-1">
-        {currentError && (
-          <p className="text-destructive px-3 py-2 text-sm">{currentError.message}</p>
-        )}
-        {!currentError &&
-          !pending &&
-          (tab === 'local' ? (
-            <LocalSections
-              projects={projects}
-              statuses={statuses}
-              selection={selection}
-              onSelect={onSelect}
-              checked={checked}
-              onCheck={onCheck}
-            />
-          ) : (
-            <IncomingSections
-              projects={projects}
-              remoteStatuses={remoteStatuses}
-              selection={selection}
-              onSelect={onSelect}
-            />
-          ))}
-      </div>
+      {tab === 'history' ? (
+        <div className="min-h-0 flex-1">{history}</div>
+      ) : (
+        <div className="min-h-0 flex-1 overflow-y-auto py-1">
+          {currentError && (
+            <p className="text-destructive px-3 py-2 text-sm">{currentError.message}</p>
+          )}
+          {!currentError &&
+            !pending &&
+            (tab === 'local' ? (
+              <LocalSections
+                projects={projects}
+                statuses={statuses}
+                selection={selection}
+                onSelect={onSelect}
+                checked={checked}
+                onCheck={onCheck}
+              />
+            ) : (
+              <IncomingSections
+                projects={projects}
+                remoteStatuses={remoteStatuses}
+                selection={selection}
+                onSelect={onSelect}
+              />
+            ))}
+        </div>
+      )}
     </section>
   );
 }

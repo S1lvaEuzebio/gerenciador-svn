@@ -7,6 +7,7 @@ import {
   commitRequestSchema,
   diffCompareSchema,
   groupSchema,
+  historyCompareSchema,
   ignoreSchema,
   mergeChoiceSchema,
   readOnlySchema,
@@ -19,6 +20,7 @@ import type {
   ConflictDetails,
   ConsoleEntry,
   DiffResponse,
+  LogPage,
   Operation,
   ProjectsResponse,
   RemoteStatusResponse,
@@ -30,6 +32,7 @@ import { cleanPatterns, configPath, getConfig, updateConfig } from './config.ts'
 import { conflictDetails, resolveConflict, saveMerge } from './conflicts.ts';
 import { clearEntries, listEntries } from './console-log.ts';
 import { fileDiff } from './diff.ts';
+import { historyDiff, historyLog } from './history.ts';
 import { HttpError } from './http-error.ts';
 import { projectStatus } from './local-status.ts';
 import { getOperation } from './operations.ts';
@@ -48,6 +51,36 @@ const fileQuery = z.object({ project: z.string().min(1), path: z.string() });
 const diffQuery = fileQuery.extend({
   compare: diffCompareSchema.default('local'),
   rev: positiveInt.optional(),
+  force: z.enum(['0', '1']).optional(),
+});
+
+/** Caminho a partir da raiz do repositório, como o `svn log` mostra (`/projeto/trunk/a.txt`). */
+const repoPathSchema = z
+  .string()
+  .startsWith('/')
+  .refine((path) => !path.split('/').some((s) => s === '.' || s === '..'), 'caminho inválido');
+
+/** `?project=a&project=b`: um ou mais projetos. */
+const projectIds = z
+  .union([z.string(), z.array(z.string())])
+  .transform((value) => (Array.isArray(value) ? value : [value]))
+  .pipe(z.array(z.string().min(1)).min(1));
+
+const historyQuery = z.object({
+  project: projectIds,
+  file: z.string().optional(),
+  before: positiveInt.optional(),
+  beforePath: repoPathSchema.optional(),
+  author: z.string().default(''),
+  text: z.string().default(''),
+});
+
+const historyDiffQuery = z.object({
+  project: z.string().min(1),
+  path: repoPathSchema,
+  rev: positiveInt,
+  compare: historyCompareSchema.default('change'),
+  local: z.string().optional(),
   force: z.enum(['0', '1']).optional(),
 });
 
@@ -140,6 +173,28 @@ export function createApp(options: { port: number; dev: boolean }) {
       query.path,
       query.compare,
       query.rev ?? null,
+      query.force === '1',
+    );
+    res.json(diff satisfies DiffResponse);
+  });
+
+  api.get('/history', async (req, res) => {
+    const query = historyQuery.parse(req.query);
+    const scope = await Promise.all(query.project.map((id) => requireProject(id)));
+    const cursor = query.before ? { before: query.before, path: query.beforePath ?? null } : null;
+    const page = await historyLog(scope, query.file ?? null, cursor, query);
+    res.json(page satisfies LogPage);
+  });
+
+  api.get('/history/diff', async (req, res) => {
+    const query = historyDiffQuery.parse(req.query);
+    const project = await requireProject(query.project);
+    const diff = await historyDiff(
+      project,
+      query.path,
+      query.rev,
+      query.compare,
+      query.local ?? null,
       query.force === '1',
     );
     res.json(diff satisfies DiffResponse);

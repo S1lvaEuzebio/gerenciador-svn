@@ -2,11 +2,12 @@ import type {
   AppConfig,
   CommitRequest,
   DiffCompare,
+  HistoryCompare,
   MergeChoice,
   ResolveAccept,
 } from './schema.ts';
 
-export type { CommitRequest, DiffCompare, MergeChoice, ResolveAccept };
+export type { CommitRequest, DiffCompare, HistoryCompare, MergeChoice, ResolveAccept };
 
 /** Valores de `wc-status/@item` do `svn status --xml`. */
 export type ItemStatus =
@@ -101,12 +102,47 @@ export interface RemoteStatusResponse {
   statuses: ProjectRemoteStatus[];
 }
 
-export interface RevisionSummary {
+/** Ação do `svn log -v` num caminho: adicionado, apagado, modificado, substituído. */
+export type ChangeAction = 'A' | 'D' | 'M' | 'R';
+
+export interface ChangedPath {
+  /** Relativo à raiz do repositório, ex.: `/projeto/trunk/a.txt`. */
+  path: string;
+  action: ChangeAction;
+  kind: NodeKind;
+  /** Origem da cópia (cópia ou renomeação). */
+  copyFrom?: { path: string; revision: number };
+  /** Propriedades alteradas; ausente quando o svn não informa. */
+  propMods?: boolean;
+  /** Projeto descoberto onde o caminho cai, com o caminho relativo a ele. */
+  project?: { id: string; path: string };
+}
+
+export interface LogEntry {
   revision: number;
   author: string;
   date: string;
   message: string;
+  paths: ChangedPath[];
+  /** Histórico de arquivo: a mudança do arquivo nesta revisão, no caminho que ele tinha então. */
+  file?: ChangedPath;
 }
+
+/** Onde a próxima página do histórico começa: revisão e, no histórico de arquivo, o caminho nela. */
+export interface LogCursor {
+  before: number;
+  path: string | null;
+}
+
+export interface LogPage {
+  entries: LogEntry[];
+  /** `null` quando chegou ao começo do histórico. */
+  next: LogCursor | null;
+  /** Menor revisão examinada; com filtro, nem toda revisão examinada entra na página. */
+  scannedTo: number | null;
+}
+
+export type RevisionSummary = Pick<LogEntry, 'revision' | 'author' | 'date' | 'message'>;
 
 export interface UpdatePreviewProject {
   projectId: string;

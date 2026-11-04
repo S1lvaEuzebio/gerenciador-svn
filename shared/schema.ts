@@ -51,6 +51,12 @@ export const configSchema = z.looseObject({
  */
 export const diffCompareSchema = z.enum(['local', 'incoming', 'local-head']);
 
+/**
+ * Diff de um caminho numa revisão do histórico: `change` = o que a revisão mudou nele,
+ * `current` = o caminho naquela revisão comparado com o arquivo atual da working copy.
+ */
+export const historyCompareSchema = z.enum(['change', 'current']);
+
 /** Opções de `svn resolve --accept` oferecidas na tela. */
 export const resolveAcceptSchema = z.enum([
   'mine-conflict',
@@ -76,6 +82,7 @@ export type Group = z.infer<typeof groupSchema>;
 export type IgnoreConfig = z.infer<typeof ignoreSchema>;
 export type ReadOnlyConfig = z.infer<typeof readOnlySchema>;
 export type DiffCompare = z.infer<typeof diffCompareSchema>;
+export type HistoryCompare = z.infer<typeof historyCompareSchema>;
 export type ResolveAccept = z.infer<typeof resolveAcceptSchema>;
 export type MergeChoice = z.infer<typeof mergeChoiceSchema>;
 export type CommitRequest = z.infer<typeof commitRequestSchema>;
