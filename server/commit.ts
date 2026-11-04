@@ -12,21 +12,22 @@ import type {
   Operation,
   Project,
 } from '../shared/types.ts';
+import { isConflicted, isPropsOnly } from '../shared/status.ts';
 import { HttpError } from './http-error.ts';
 import { projectIgnoreMatcher } from './ignore.ts';
 import { isChange, nodeKind } from './local-status.ts';
 import { startOperation, type StepSpec } from './operations.ts';
 import { relativeToProject, requireProject, resolveInProject } from './projects.ts';
-import { svnInfo } from './svn/info.ts';
-import { svnCommandLine } from './svn/run.ts';
+import { svnInfo, svnTree } from './svn/info.ts';
+import { localTarget, svnCommandLine } from './svn/run.ts';
 import { svnRemoteStatus, svnStatus, type StatusEntry } from './svn/status.ts';
 
 /** Limite de itens ao abrir uma pasta nova marcada para o commit. */
 const MAX_FOLDER_ITEMS = 500;
 
 const ACTIONS: Partial<Record<ItemStatus, CommitAction>> = {
-  unversioned: 'add',
-  missing: 'delete',
+  unversioned: 'to-add',
+  missing: 'to-delete',
   added: 'added',
   deleted: 'deleted',
   modified: 'modified',
@@ -36,16 +37,12 @@ const ACTIONS: Partial<Record<ItemStatus, CommitAction>> = {
 function actionFor(entry: StatusEntry): CommitAction | null {
   const action = ACTIONS[entry.item];
   if (action) return action;
-  const unchanged = entry.item === 'normal' || entry.item === 'none';
-  return unchanged && entry.props === 'modified' ? 'props' : null;
+  return isPropsOnly(entry) ? 'props' : null;
 }
 
 /** Ordem por código, para a pasta vir sempre antes do que tem dentro (`a` < `a/b`). */
 const byPath = (a: { path: string }, b: { path: string }) =>
   a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
-
-const isInside = (path: string, folder: string) =>
-  folder === '' ? path !== '' : path.startsWith(`${folder}/`);
 
 /** Arquivos e pastas dentro de uma pasta nova, sem o que casa com os padrões de ignorados. */
 async function folderContent(
@@ -60,7 +57,7 @@ async function folderContent(
       const path = relativeToProject(project, join(dir, entry.name));
       if (isIgnored(path)) continue;
       const kind = entry.isDirectory() ? 'dir' : 'file';
-      items.push({ path, kind, action: 'add', included: 'content' });
+      items.push({ path, kind, action: 'to-add', included: 'content' });
       if (items.length > MAX_FOLDER_ITEMS) return false;
       if (kind === 'dir' && !(await walk(join(dir, entry.name)))) return false;
     }
@@ -107,7 +104,7 @@ async function planProject(
       errors.push(`${label(path)}: casa com um padrão de ignorados e nunca entra em commit`);
       continue;
     }
-    if (entry.item === 'conflicted' || entry.props === 'conflicted' || entry.treeConflict) {
+    if (isConflicted(entry)) {
       errors.push(`${label(path)}: em conflito; resolva antes de comitar`);
       continue;
     }
@@ -127,7 +124,7 @@ async function planProject(
           );
     add({ path, kind, action });
 
-    if (action === 'add' && kind === 'dir') {
+    if (action === 'to-add' && kind === 'dir') {
       const content = await folderContent(project, absolute, isIgnored);
       if (!content) {
         errors.push(
@@ -139,11 +136,44 @@ async function planProject(
   }
 
   // Apagar uma pasta leva tudo o que tem dentro: os filhos aparecem na lista, mas o commit vai
-  // só com a pasta.
-  for (const folder of [...items.values()].filter((i) => i.action === 'deleted')) {
+  // só com a pasta. Se algum filho casa com os padrões de ignorados, a pasta não pode ir.
+  const deletedFolders = [...items.values()].filter(
+    (i) => (i.action === 'deleted' || i.action === 'to-delete') && i.kind === 'dir',
+  );
+  for (const folder of deletedFolders) {
+    const tree = await svnTree(resolveInProject(project, folder.path));
+    const content = tree
+      .map((node) => ({ ...node, path: relativeToProject(project, node.path) }))
+      .filter((node) => node.path !== folder.path);
+    const ignored = content.filter((node) => isIgnored(node.path)).map((node) => node.path);
+    if (ignored.length > 0) {
+      errors.push(
+        `${label(folder.path)}: apagar a pasta levaria arquivos ignorados para o commit (${ignored.join(', ')})`,
+      );
+    }
+    for (const node of content) {
+      items.set(node.path, {
+        path: node.path,
+        kind: node.kind,
+        action: folder.action,
+        included: 'content',
+      });
+    }
+  }
+
+  // Pasta já adicionada (ex.: sobrou de um commit que falhou depois do svn add) leva o que foi
+  // adicionado dentro dela; com --depth empty, sozinha ela subiria vazia.
+  for (const folder of [...items.values()].filter(
+    (i) => i.action === 'added' && i.kind === 'dir' && i.included === undefined,
+  )) {
     for (const [path, entry] of entries) {
-      if (isInside(path, folder.path) && entry.item === 'deleted') {
-        items.set(path, { path, kind: 'unknown', action: 'deleted', included: 'content' });
+      if (path.startsWith(`${folder.path}/`) && entry.item === 'added' && !isIgnored(path)) {
+        add({
+          path,
+          kind: await nodeKind(resolveInProject(project, path)),
+          action: 'added',
+          included: 'content',
+        });
       }
     }
   }
@@ -199,10 +229,13 @@ async function buildPlan(
     plan.items.map((item) => ({ item, absolute: resolveInProject(plan.project, item.path) })),
   );
   const pick = (keep: (item: CommitItem) => boolean) =>
-    all.filter(({ item }) => keep(item)).map(({ absolute }) => absolute);
-  const adds = pick((i) => i.action === 'add');
-  const deletes = pick((i) => i.action === 'delete');
-  const targets = pick((i) => !(i.included === 'content' && i.action === 'deleted'));
+    all.filter(({ item }) => keep(item)).map(({ absolute }) => localTarget(absolute));
+  // Conteúdo de pasta apagada vai junto com a pasta; não entra como alvo.
+  const removedContent = (i: CommitItem) =>
+    i.included === 'content' && (i.action === 'deleted' || i.action === 'to-delete');
+  const adds = pick((i) => i.action === 'to-add');
+  const deletes = pick((i) => i.action === 'to-delete' && !removedContent(i));
+  const targets = pick((i) => !removedContent(i));
 
   const projectIds = projects.map((p) => p.id);
   const specs: StepSpec[] = [
@@ -213,7 +246,7 @@ async function buildPlan(
       ? [{ label: 'svn delete', projectIds, args: ['delete', ...deletes] }]
       : []),
     {
-      label: 'commit',
+      label: 'svn commit',
       projectIds,
       args: ['commit', '--depth', 'empty', '-m', message, ...targets],
     },

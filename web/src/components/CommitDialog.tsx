@@ -1,7 +1,5 @@
-import type { CommitAction, CommitItem, CommitRequest, Project } from '@shared/types.ts';
-import { useMutation } from '@tanstack/react-query';
+import type { CommitItem, CommitRequest, Project } from '@shared/types.ts';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { useEffect, useEffectEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,34 +9,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
-import { useCommitPreview, useOperation, useRefreshAll } from '@/lib/queries';
-import { displayPath } from '@/lib/status';
+import { useCommitPreview, useOperationRun } from '@/lib/queries';
+import { commitActionLabel, displayPath } from '@/lib/status';
 import { cn } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
 import { OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
-
-const ACTION: Record<CommitAction, { letter: string; label: string; className: string }> = {
-  add: {
-    letter: 'A',
-    label: 'novo: entra com svn add',
-    className: 'text-green-600 dark:text-green-400',
-  },
-  delete: {
-    letter: 'D',
-    label: 'faltando no disco: entra com svn delete',
-    className: 'text-red-600 dark:text-red-400',
-  },
-  added: { letter: 'A', label: 'adicionado', className: 'text-green-600 dark:text-green-400' },
-  deleted: { letter: 'D', label: 'apagado', className: 'text-red-600 dark:text-red-400' },
-  modified: { letter: 'M', label: 'modificado', className: 'text-amber-600 dark:text-amber-400' },
-  replaced: { letter: 'R', label: 'substituído', className: 'text-blue-600 dark:text-blue-400' },
-  props: {
-    letter: 'P',
-    label: 'propriedades alteradas',
-    className: 'text-violet-600 dark:text-violet-400',
-  },
-};
 
 const INCLUDED: Record<NonNullable<CommitItem['included']>, string> = {
   parent: 'pasta nova acima de um item marcado',
@@ -46,7 +22,7 @@ const INCLUDED: Record<NonNullable<CommitItem['included']>, string> = {
 };
 
 function ItemRow({ item }: { item: CommitItem }) {
-  const action = ACTION[item.action];
+  const action = commitActionLabel(item.action);
   return (
     <li
       className="flex gap-2 font-mono text-xs"
@@ -90,25 +66,11 @@ export function CommitDialog({
   onUpdate,
   onCommitted,
 }: CommitDialogProps) {
-  const [operationId, setOperationId] = useState<number | null>(null);
   const preview = useCommitPreview(request);
-  const operation = useOperation(operationId);
-  const start = useMutation({
-    mutationFn: (fingerprint: string) => api.startCommit(request, fingerprint),
-    onSuccess: (op) => setOperationId(op.id),
-  });
-  const done = operation.data?.done ?? false;
-  const succeeded = done && operation.data!.steps.every((s) => s.state === 'done');
-  const running = operationId !== null && !done;
-
-  const refreshAll = useRefreshAll();
-  const onDone = useEffectEvent(() => {
-    if (succeeded) onCommitted(request.message);
-    void refreshAll();
-  });
-  useEffect(() => {
-    if (done) onDone();
-  }, [done]);
+  const run = useOperationRun(
+    (fingerprint: string) => api.startCommit(request, fingerprint),
+    (succeeded) => succeeded && onCommitted(request.message),
+  );
 
   const byId = new Map(projects.map((p) => [p.id, p]));
   const data = preview.data;
@@ -117,20 +79,20 @@ export function CommitDialog({
   const blocked = !data || data.errors.length > 0 || outdated.length > 0 || locked;
 
   return (
-    <Dialog open onOpenChange={(next) => !next && !running && !start.isPending && onClose()}>
+    <Dialog open onOpenChange={(next) => !next && !run.busy && onClose()}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Commit</DialogTitle>
           <DialogDescription>
-            {operationId === null
+            {!run.started
               ? 'Confira a lista final e os comandos antes de confirmar.'
               : 'Saída do svn em tempo real.'}
           </DialogDescription>
         </DialogHeader>
 
-        {operationId !== null ? (
+        {run.started ? (
           <OperationProgress
-            operation={operation.data}
+            operation={run.operation}
             projects={projects}
             doneMessage="Commit feito. A seleção e o rascunho foram limpos."
           />
@@ -193,27 +155,27 @@ export function CommitDialog({
             )}
             <CommandBlock commands={data!.commands} />
             {locked && <LockNotice kind="commit" onUnlock={onUnlock} />}
-            {start.error && <p className="text-destructive text-sm">{start.error.message}</p>}
+            {run.startError && <p className="text-destructive text-sm">{run.startError.message}</p>}
           </div>
         )}
 
         <div className="flex justify-end gap-2">
-          {operationId === null ? (
+          {!run.started ? (
             <>
               <Button variant="outline" onClick={onClose}>
                 Cancelar
               </Button>
               <Button
-                onClick={() => start.mutate(data!.fingerprint)}
-                disabled={blocked || start.isPending}
+                onClick={() => run.start(data!.fingerprint)}
+                disabled={blocked || run.starting}
               >
-                {start.isPending
+                {run.starting
                   ? 'Iniciando…'
                   : `Comitar (${total} ${total === 1 ? 'item' : 'itens'})`}
               </Button>
             </>
           ) : (
-            <Button onClick={onClose} disabled={running}>
+            <Button onClick={onClose} disabled={run.busy}>
               Fechar
             </Button>
           )}

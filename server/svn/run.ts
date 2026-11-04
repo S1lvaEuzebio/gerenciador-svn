@@ -22,6 +22,14 @@ function svnArgs(args: string[]): string[] {
   return [subcommand, '--non-interactive', ...rest];
 }
 
+/**
+ * Caminho local como alvo do svn. O svn lê o último `@` como revisão (`a@2x.png` → revisão `2x.png`);
+ * um `@` no fim desliga isso. URLs (`url@rev`) passam direto.
+ */
+export function localTarget(path: string): string {
+  return path.startsWith('/') && path.includes('@') ? `${path}@` : path;
+}
+
 /** Comando exato que `runSvnRaw(args)` executa, para mostrar na confirmação. */
 export function svnCommandLine(args: string[]): string {
   return formatCommand(svnArgs(args));

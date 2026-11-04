@@ -109,8 +109,8 @@ export function createApp(options: { port: number; dev: boolean }) {
   });
 
   api.put('/config/commit', async (req, res) => {
-    const { reference } = z.object({ reference: commitReferenceSchema }).parse(req.body);
-    await updateConfig({ commitReference: reference });
+    const { template } = z.object({ template: commitReferenceSchema }).parse(req.body);
+    await updateConfig({ commitReferenceTemplate: template });
     res.json(configResponse());
   });
 

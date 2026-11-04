@@ -1,5 +1,5 @@
 import type { NodeKind, TreeConflict } from '../../shared/types.ts';
-import { runSvn } from './run.ts';
+import { localTarget, runSvn } from './run.ts';
 import { parseSvnXml } from './xml.ts';
 
 interface ConflictXml {
@@ -14,6 +14,7 @@ interface ConflictXml {
 interface InfoXml {
   info?: {
     entry?: Array<{
+      path?: string;
       kind?: string;
       revision?: string;
       'relative-url'?: string;
@@ -69,7 +70,7 @@ function decodeUrlPath(value: string): string {
 }
 
 async function infoEntry(path: string) {
-  const xml = await runSvn(['info', '--xml', path]);
+  const xml = await runSvn(['info', '--xml', localTarget(path)]);
   const entry = parseSvnXml<InfoXml>(xml).info?.entry?.[0];
   if (!entry) throw new Error(`svn info sem resultado para ${path}`);
   return entry;
@@ -84,6 +85,15 @@ export async function svnInfo(path: string): Promise<NodeInfo> {
     repoRootUrl: entry.repository?.root ?? '',
     revision: Number(entry.revision ?? 0),
   };
+}
+
+/** Todos os nós versionados dentro de um caminho (inclusive apagados), com o próprio caminho. */
+export async function svnTree(path: string): Promise<Array<{ path: string; kind: NodeKind }>> {
+  const xml = await runSvn(['info', '--depth', 'infinity', '--xml', localTarget(path)]);
+  return (parseSvnXml<InfoXml>(xml).info?.entry ?? []).map((e) => ({
+    path: e.path ?? '',
+    kind: toNodeKind(e.kind),
+  }));
 }
 
 function revisionOf(conflict: ConflictXml, side: string): number | null {

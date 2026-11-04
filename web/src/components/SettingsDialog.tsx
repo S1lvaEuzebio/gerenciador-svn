@@ -18,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { formatReference } from '@/lib/commit-message';
 import {
-  useSaveCommitReference,
+  useSaveCommitReferenceTemplate,
   useSaveIgnore,
   useSaveReadOnly,
   useSaveRoots,
@@ -199,8 +199,8 @@ function ReadOnlyTab({ config }: { config: AppConfig }) {
 }
 
 function CommitTab({ config }: { config: AppConfig }) {
-  const [template, setTemplate] = useState(config.commitReference ?? '');
-  const save = useSaveCommitReference();
+  const [template, setTemplate] = useState(config.commitReferenceTemplate ?? '');
+  const save = useSaveCommitReferenceTemplate();
   const example = template.trim() === '' ? null : formatReference(template.trim(), '123');
   return (
     <div className="space-y-3">
@@ -225,7 +225,7 @@ function CommitTab({ config }: { config: AppConfig }) {
         )}
       </div>
       <SaveRow
-        onSave={() => save.mutate(template.trim() === '' ? null : template.trim())}
+        onSave={() => save.mutate(template)}
         pending={save.isPending}
         error={save.error}
         saved={save.isSuccess}

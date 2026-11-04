@@ -1,17 +1,12 @@
-import type { LocalChange, Project } from '@shared/types.ts';
+import type { Project } from '@shared/types.ts';
 import { GitCommitHorizontal, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { useCommitMessage } from '@/lib/commit-message';
+import type { CheckedItem } from '@/lib/commit-selection';
 import { displayPath, statusLabel } from '@/lib/status';
 import { cn } from '@/lib/utils';
-
-export interface CheckedItem {
-  key: string;
-  project: Project;
-  change: LocalChange;
-}
 
 interface CommitPanelProps {
   items: CheckedItem[];

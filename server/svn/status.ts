@@ -1,5 +1,5 @@
 import type { ItemStatus, PropStatus, RemoteItem } from '../../shared/types.ts';
-import { runSvn } from './run.ts';
+import { localTarget, runSvn } from './run.ts';
 import { parseSvnXml } from './xml.ts';
 
 interface EntryXml {
@@ -52,14 +52,14 @@ function toRemote(e: EntryXml): RemoteStatusEntry['remote'] {
 
 /** `svn status --xml` local (sem consultar o servidor). */
 export async function svnStatus(target: string): Promise<StatusEntry[]> {
-  const xml = await runSvn(['status', '--xml', target]);
+  const xml = await runSvn(['status', '--xml', localTarget(target)]);
   const targets = parseSvnXml<StatusXml>(xml).status?.target ?? [];
   return targets.flatMap((t) => (t.entry ?? []).map(toEntry));
 }
 
 /** `svn status -u --xml`: consulta o servidor e marca o que chega no próximo update. */
 export async function svnRemoteStatus(target: string): Promise<RemoteStatus> {
-  const xml = await runSvn(['status', '-u', '--xml', target]);
+  const xml = await runSvn(['status', '-u', '--xml', localTarget(target)]);
   const [first] = parseSvnXml<StatusXml>(xml).status?.target ?? [];
   const against = first?.against?.revision;
   return {

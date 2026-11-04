@@ -217,11 +217,11 @@ export interface ConflictDetails {
 }
 
 /**
- * O que o commit faz com o caminho. `add` e `delete` são itens `?` e `!`: o app roda `svn add` ou
- * `svn delete` antes do commit. Os outros já estão marcados na working copy.
+ * O que o commit faz com o caminho. `to-add` e `to-delete` são itens `?` e `!`: o app roda
+ * `svn add` ou `svn delete` antes do commit. Os outros já estão marcados na working copy.
  */
 export type CommitAction =
-  'add' | 'delete' | 'added' | 'deleted' | 'modified' | 'replaced' | 'props';
+  'to-add' | 'to-delete' | 'added' | 'deleted' | 'modified' | 'replaced' | 'props';
 
 export interface CommitItem {
   path: string;

@@ -84,7 +84,7 @@ Fica em `~/.config/gerenciador-svn/config.json` (ou `$XDG_CONFIG_HOME/gerenciado
     "projects": {}
   },
   "readOnly": { "local": true, "commit": true },
-  "commitReference": "tarefa #{n}"
+  "commitReferenceTemplate": "tarefa #{n}"
 }
 ```
 

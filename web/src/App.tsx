@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { CommitDialog } from '@/components/CommitDialog';
-import { CommitPanel, type CheckedItem } from '@/components/CommitPanel';
+import { CommitPanel } from '@/components/CommitPanel';
 import { ConflictPanel } from '@/components/ConflictPanel';
 import { ConsolePanel } from '@/components/ConsolePanel';
 import { DiffPanel, type FileSelection } from '@/components/DiffPanel';
@@ -32,7 +32,8 @@ import {
   useStatus,
 } from '@/lib/queries';
 import { useCommitMessage } from '@/lib/commit-message';
-import { commitKey, isCommittable, isConflict } from '@/lib/status';
+import { useCommitSelection } from '@/lib/commit-selection';
+import { isConflict } from '@/lib/status';
 import { useStoredState } from '@/lib/use-stored-state';
 import { cn, projectCount } from '@/lib/utils';
 
@@ -62,10 +63,9 @@ export function App() {
   const [updateOpen, setUpdateOpen] = useState(false);
   /** Update pedido pelo commit (itens desatualizados), no lugar do escopo da tela. */
   const [updateTargets, setUpdateTargets] = useState<Project[] | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(new Set());
   /** Pedido do commit em confirmação, copiado no clique para a prévia não mudar com a lista. */
   const [commitRequest, setCommitRequest] = useState<CommitRequest | null>(null);
-  const draft = useCommitMessage(config.data?.config.commitReference ?? null);
+  const draft = useCommitMessage(config.data?.config.commitReferenceTemplate ?? null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('roots');
@@ -84,6 +84,7 @@ export function App() {
       ),
     [remote.data],
   );
+  const commitSelection = useCommitSelection(allProjects, statuses);
 
   const activeFilter =
     groupFilter === ALL || groupFilter === UNGROUPED || groups.some((g) => g.id === groupFilter)
@@ -130,23 +131,6 @@ export function App() {
     setUpdateOpen(false);
     openSettings('read-only');
   };
-
-  const onCheck = (keys: string[], value: boolean) => {
-    setChecked((current) => {
-      const next = new Set(current);
-      for (const key of keys) {
-        if (value) next.add(key);
-        else next.delete(key);
-      }
-      return next;
-    });
-  };
-  // Só o que ainda está na lista e pode entrar no commit; o resto fica de fora sem aviso.
-  const checkedItems: CheckedItem[] = allProjects.flatMap((project) =>
-    (statuses.get(project.id)?.changes ?? [])
-      .filter((change) => isCommittable(change) && checked.has(commitKey(project.id, change.path)))
-      .map((change) => ({ key: commitKey(project.id, change.path), project, change })),
-  );
 
   const readOnly = config.data?.config.readOnly;
   const locks = readOnly
@@ -255,17 +239,17 @@ export function App() {
                 onTab={setFileTab}
                 selection={selection}
                 onSelect={setSelection}
-                checked={checked}
-                onCheck={onCheck}
+                checked={commitSelection.checked}
+                onCheck={commitSelection.setMany}
               />
               <CommitPanel
-                items={checkedItems}
-                template={config.data.config.commitReference}
+                items={commitSelection.items}
+                template={config.data.config.commitReferenceTemplate}
                 draft={draft}
-                onUncheck={(keys) => onCheck(keys, false)}
+                onUncheck={(keys) => commitSelection.setMany(keys, false)}
                 onCommit={() =>
                   setCommitRequest({
-                    items: checkedItems.map(({ project, change }) => ({
+                    items: commitSelection.items.map(({ project, change }) => ({
                       projectId: project.id,
                       path: change.path,
                     })),
@@ -342,7 +326,7 @@ export function App() {
           }}
           onCommitted={(message) => {
             draft.remember(message);
-            setChecked(new Set());
+            commitSelection.clear();
           }}
         />
       )}

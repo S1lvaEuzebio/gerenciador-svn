@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useEffectEvent, useState } from 'react';
 import type { Group, IgnoreConfig, ReadOnlyConfig } from '@shared/schema.ts';
-import type { CommitRequest, ConfigResponse, MergeChoice, ResolveAccept } from '@shared/types.ts';
+import type {
+  CommitRequest,
+  ConfigResponse,
+  MergeChoice,
+  Operation,
+  ResolveAccept,
+} from '@shared/types.ts';
 import { api, type DiffRequest } from './api';
 
 export const keys = {
@@ -123,6 +130,40 @@ export function useRefreshAll() {
   };
 }
 
+/**
+ * Ciclo de uma operação de gravação nas janelas de update e commit: começa, acompanha a saída e,
+ * ao terminar, recarrega tudo e avisa se todas as etapas deram certo.
+ */
+export function useOperationRun<T>(
+  start: (args: T) => Promise<Operation>,
+  onDone: (succeeded: boolean) => void,
+) {
+  const [operationId, setOperationId] = useState<number | null>(null);
+  const operation = useOperation(operationId);
+  const mutation = useMutation({ mutationFn: start, onSuccess: (op) => setOperationId(op.id) });
+  const done = operation.data?.done ?? false;
+  const succeeded = done && operation.data!.steps.every((s) => s.state === 'done');
+
+  const refreshAll = useRefreshAll();
+  const finish = useEffectEvent(() => {
+    onDone(succeeded);
+    void refreshAll();
+  });
+  useEffect(() => {
+    if (done) finish();
+  }, [done]);
+
+  return {
+    started: operationId !== null,
+    operation: operation.data,
+    start: mutation.mutate,
+    starting: mutation.isPending,
+    startError: mutation.error,
+    /** A janela não fecha enquanto o svn roda: a saída e a recarga do status dependem dela. */
+    busy: mutation.isPending || (operationId !== null && !done),
+  };
+}
+
 /** Depois de resolver um conflito, que só mexe na cópia local. */
 function useAfterLocalWrite() {
   const queryClient = useQueryClient();
@@ -183,6 +224,6 @@ export function useSaveReadOnly() {
   return useConfigMutation((readOnly: ReadOnlyConfig) => api.saveReadOnly(readOnly));
 }
 
-export function useSaveCommitReference() {
-  return useConfigMutation((reference: string | null) => api.saveCommitReference(reference));
+export function useSaveCommitReferenceTemplate() {
+  return useConfigMutation((template: string) => api.saveCommitReferenceTemplate(template));
 }

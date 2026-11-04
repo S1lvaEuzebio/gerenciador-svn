@@ -54,8 +54,8 @@ export const api = {
   saveGroups: (groups: Group[]) => put<ConfigResponse>('/config/groups', { groups }),
   saveIgnore: (ignore: IgnoreConfig) => put<ConfigResponse>('/config/ignore', ignore),
   saveReadOnly: (readOnly: ReadOnlyConfig) => put<ConfigResponse>('/config/read-only', readOnly),
-  saveCommitReference: (reference: string | null) =>
-    put<ConfigResponse>('/config/commit', { reference }),
+  saveCommitReferenceTemplate: (template: string) =>
+    put<ConfigResponse>('/config/commit', { template }),
   projects: () => request<ProjectsResponse>('/projects'),
   status: () => request<StatusResponse>('/status'),
   remoteStatus: () => request<RemoteStatusResponse>('/remote-status'),

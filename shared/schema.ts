@@ -42,7 +42,7 @@ export const configSchema = z.looseObject({
   groups: z.array(groupSchema).default([]),
   ignore: ignoreSchema.default({ global: DEFAULT_IGNORE_PATTERNS, projects: {} }),
   readOnly: readOnlySchema.default({ local: true, commit: true }),
-  commitReference: commitReferenceSchema.default(null),
+  commitReferenceTemplate: commitReferenceSchema.default(null),
 });
 
 /**

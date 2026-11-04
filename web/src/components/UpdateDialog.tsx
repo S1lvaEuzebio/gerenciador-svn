@@ -1,7 +1,6 @@
 import type { Project, UpdatePreviewProject } from '@shared/types.ts';
-import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { useEffect, useEffectEvent, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -11,7 +10,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
-import { useOperation, useRefreshAll, useUpdatePreview } from '@/lib/queries';
+import { useOperationRun, useUpdatePreview } from '@/lib/queries';
 import { displayPath, incomingLabel } from '@/lib/status';
 import { cn, projectCount } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
@@ -117,22 +116,9 @@ export function UpdateDialog({
   locked,
   onUnlock,
 }: UpdateDialogProps) {
-  const [operationId, setOperationId] = useState<number | null>(null);
   const preview = useUpdatePreview(projects.map((p) => p.id));
-  const operation = useOperation(operationId);
-  const start = useMutation({
-    mutationFn: api.startUpdate,
-    onSuccess: (op) => setOperationId(op.id),
-  });
-  const done = operation.data?.done ?? false;
-  const running = operationId !== null && !done;
-
-  // Ao terminar, recarrega projetos (revisão), status local e o que ainda falta chegar.
-  const refreshAll = useRefreshAll();
-  const onDone = useEffectEvent(() => void refreshAll());
-  useEffect(() => {
-    if (done) onDone();
-  }, [done]);
+  // Ao terminar, o hook recarrega projetos (revisão), status local e o que ainda falta chegar.
+  const run = useOperationRun(api.startUpdate, () => {});
 
   const items = preview.data?.projects ?? [];
   const withChanges = items.filter((i) => i.command !== null);
@@ -141,24 +127,23 @@ export function UpdateDialog({
   const byId = new Map(projects.map((p) => [p.id, p]));
 
   const confirm = () =>
-    start.mutate(withChanges.map((i) => ({ projectId: i.projectId, revision: i.headRevision! })));
+    run.start(withChanges.map((i) => ({ projectId: i.projectId, revision: i.headRevision! })));
 
   return (
-    // Durante o update a janela não fecha: a saída e a recarga do status dependem dela.
-    <Dialog open={open} onOpenChange={(next) => !running && !start.isPending && onOpenChange(next)}>
+    <Dialog open={open} onOpenChange={(next) => !run.busy && onOpenChange(next)}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Update: {scopeLabel}</DialogTitle>
           <DialogDescription>
-            {operationId === null
+            {!run.started
               ? 'Confira o que vai chegar do servidor antes de confirmar.'
               : 'Saída do svn em tempo real.'}
           </DialogDescription>
         </DialogHeader>
 
-        {operationId !== null ? (
+        {run.started ? (
           <OperationProgress
-            operation={operation.data}
+            operation={run.operation}
             projects={projects}
             doneMessage="Update concluído. Conflitos, se houver, aparecem com C na lista Locais."
           />
@@ -195,27 +180,25 @@ export function UpdateDialog({
               <CommandBlock commands={withChanges.map((i) => i.command!)} />
             )}
             {locked && withChanges.length > 0 && <LockNotice kind="local" onUnlock={onUnlock} />}
-            {start.error && <p className="text-destructive text-sm">{start.error.message}</p>}
+            {run.startError && <p className="text-destructive text-sm">{run.startError.message}</p>}
           </div>
         )}
 
         <div className="flex justify-end gap-2">
-          {operationId === null ? (
+          {!run.started ? (
             <>
               <Button variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
               <Button
                 onClick={confirm}
-                disabled={withChanges.length === 0 || locked || start.isPending}
+                disabled={withChanges.length === 0 || locked || run.starting}
               >
-                {start.isPending
-                  ? 'Iniciando…'
-                  : `Fazer update (${projectCount(withChanges.length)})`}
+                {run.starting ? 'Iniciando…' : `Fazer update (${projectCount(withChanges.length)})`}
               </Button>
             </>
           ) : (
-            <Button onClick={() => onOpenChange(false)} disabled={running}>
+            <Button onClick={() => onOpenChange(false)} disabled={run.busy}>
               Fechar
             </Button>
           )}
