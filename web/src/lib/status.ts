@@ -1,4 +1,4 @@
-import type { LocalChange } from '@shared/types.ts';
+import type { IncomingChange, LocalChange } from '@shared/types.ts';
 
 export interface StatusLabel {
   letter: string;
@@ -51,7 +51,28 @@ export function isPropsOnly(change: LocalChange): boolean {
   return (change.item === 'normal' || change.item === 'none') && change.props === 'modified';
 }
 
-export function displayPath(change: LocalChange): string {
+/** Caminho para mostrar na lista: pasta do projeto e pastas com `/` no fim. */
+export function displayPath(change: Pick<LocalChange, 'path' | 'kind'>): string {
   const base = change.path === '' ? '(pasta do projeto)' : change.path;
   return change.kind === 'dir' && change.path !== '' ? `${base}/` : base;
+}
+
+const INCOMING_LABELS: Record<IncomingChange['item'], StatusLabel> = {
+  added: { letter: 'A', label: 'novo no servidor', className: ITEM_LABELS.added!.className },
+  deleted: { letter: 'D', label: 'apagado no servidor', className: ITEM_LABELS.deleted!.className },
+  modified: {
+    letter: 'M',
+    label: 'alterado no servidor',
+    className: ITEM_LABELS.modified!.className,
+  },
+  replaced: {
+    letter: 'R',
+    label: 'substituído no servidor',
+    className: ITEM_LABELS.replaced!.className,
+  },
+  none: { ...PROPS_MODIFIED, label: 'propriedades alteradas no servidor' },
+};
+
+export function incomingLabel(change: IncomingChange): StatusLabel {
+  return INCOMING_LABELS[change.item];
 }

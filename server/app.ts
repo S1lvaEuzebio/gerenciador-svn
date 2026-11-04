@@ -4,26 +4,58 @@ import express, { type ErrorRequestHandler } from 'express';
 import { z } from 'zod';
 import { groupSchema, ignoreSchema, readOnlySchema } from '../shared/schema.ts';
 import type {
+  CommandResult,
   ConfigResponse,
+  ConflictDetails,
   ConsoleEntry,
   DiffResponse,
+  Operation,
   ProjectsResponse,
+  RemoteStatusResponse,
   StatusResponse,
+  UpdatePreview,
 } from '../shared/types.ts';
 import { cleanPatterns, configPath, getConfig, updateConfig } from './config.ts';
+import { conflictDetails, resolveConflict, saveMerge } from './conflicts.ts';
 import { clearEntries, listEntries } from './console-log.ts';
-import { localDiff } from './diff.ts';
+import { fileDiff } from './diff.ts';
 import { HttpError } from './http-error.ts';
 import { projectStatus } from './local-status.ts';
+import { getOperation } from './operations.ts';
 import { discoverProjects, knownProjects, requireProject } from './projects.ts';
+import { requireUnlocked } from './read-only.ts';
+import { projectRemoteStatus } from './remote-status.ts';
 import { localOnly } from './security.ts';
+import { startUpdate, updatePreview } from './update.ts';
 
 const webDist = fileURLToPath(new URL('../dist/web', import.meta.url));
 
-const diffQuery = z.object({
-  project: z.string().min(1),
-  path: z.string(),
+const revision = z.coerce.number().int().positive();
+
+const fileQuery = z.object({ project: z.string().min(1), path: z.string() });
+
+const diffQuery = fileQuery.extend({
+  compare: z.enum(['local', 'incoming', 'local-head']).default('local'),
+  rev: revision.optional(),
   force: z.enum(['0', '1']).optional(),
+});
+
+const updateBody = z.object({
+  targets: z.array(z.object({ projectId: z.string().min(1), revision })).min(1),
+});
+
+const resolveBody = fileQuery.extend({
+  accept: z.enum(['mine-conflict', 'theirs-conflict', 'mine-full', 'theirs-full']),
+});
+
+const mergeBody = fileQuery.extend({
+  fingerprint: z.string().min(1),
+  choices: z.array(
+    z.union([
+      z.object({ pick: z.enum(['mine', 'theirs', 'both']) }),
+      z.object({ edit: z.string() }),
+    ]),
+  ),
 });
 
 function configResponse(): ConfigResponse {
@@ -81,11 +113,64 @@ export function createApp(options: { port: number; dev: boolean }) {
     res.json({ statuses } satisfies StatusResponse);
   });
 
+  api.get('/remote-status', async (_req, res) => {
+    const config = getConfig();
+    const projects = await knownProjects();
+    const statuses = await Promise.all(projects.map((p) => projectRemoteStatus(p, config)));
+    res.json({ statuses } satisfies RemoteStatusResponse);
+  });
+
   api.get('/diff', async (req, res) => {
     const query = diffQuery.parse(req.query);
     const project = await requireProject(query.project);
-    const diff = await localDiff(project, query.path, query.force === '1');
+    const diff = await fileDiff(
+      project,
+      query.path,
+      query.compare,
+      query.rev ?? null,
+      query.force === '1',
+    );
     res.json(diff satisfies DiffResponse);
+  });
+
+  api.post('/update/preview', async (req, res) => {
+    const { projects: ids } = z.object({ projects: z.array(z.string()).min(1) }).parse(req.body);
+    const projects = await Promise.all(ids.map((id) => requireProject(id)));
+    res.json((await updatePreview(projects, getConfig())) satisfies UpdatePreview);
+  });
+
+  api.post('/update', requireUnlocked('local'), async (req, res) => {
+    const { targets } = updateBody.parse(req.body);
+    const resolved = await Promise.all(
+      targets.map(async (t) => ({
+        project: await requireProject(t.projectId),
+        revision: t.revision,
+      })),
+    );
+    res.status(202).json(startUpdate(resolved) satisfies Operation);
+  });
+
+  api.get('/operations/:id', (req, res) => {
+    res.json(getOperation(revision.parse(req.params.id)) satisfies Operation);
+  });
+
+  api.get('/conflict', async (req, res) => {
+    const query = fileQuery.parse(req.query);
+    const project = await requireProject(query.project);
+    res.json((await conflictDetails(project, query.path)) satisfies ConflictDetails);
+  });
+
+  api.post('/conflict/resolve', requireUnlocked('local'), async (req, res) => {
+    const body = resolveBody.parse(req.body);
+    const project = await requireProject(body.project);
+    res.json((await resolveConflict(project, body.path, body.accept)) satisfies CommandResult);
+  });
+
+  api.post('/conflict/merge', requireUnlocked('local'), async (req, res) => {
+    const body = mergeBody.parse(req.body);
+    const project = await requireProject(body.project);
+    const result = await saveMerge(project, body.path, body.fingerprint, body.choices);
+    res.json(result satisfies CommandResult);
   });
 
   api.get('/console', (_req, res) => {

@@ -10,13 +10,21 @@ Feito para quem mantém projetos antigos em SVN e quer uma ferramenta leve (um p
 
 - Descobre as working copies SVN dentro de uma ou mais pastas raiz (só as subpastas diretas; o resto, como projetos git, fica de fora).
 - Mostra as mudanças locais de cada projeto, com contadores na barra lateral, e atualiza sozinho quando a janela ganha foco.
-- Diff "minhas mudanças" (cópia local × base) lado a lado ou unificado, com opção de ignorar espaços, aviso de troca de fim de linha, diff de propriedades e proteção para arquivos grandes e binários.
+- Mostra o que vai chegar do servidor (aba **Servidor**), consultado ao abrir e pelo botão Recarregar, com aviso quando o arquivo também tem mudança local ou casa com um padrão de ignorados.
+- Três diffs, lado a lado ou unificado: "minhas mudanças" (cópia local × base), "o que vai chegar" (base × servidor) e cópia local × servidor. Opção de ignorar espaços, aviso de troca de fim de linha, diff de propriedades e proteção para arquivos grandes e binários.
+- Update por projeto, grupo ou tudo, com prévia (revisões, arquivos, avisos e o comando exato) antes de confirmar. Vai sempre até a revisão mostrada na prévia, deixa os conflitos para resolver na tela (`--accept postpone`) e mostra a saída do svn em tempo real. Cada working copy roda numa fila própria, em paralelo com as outras.
+- Resolução de conflitos:
+  - texto: manter a sua versão ou a do servidor nos trechos em conflito, escolher o arquivo inteiro de um lado, ou mesclar trecho a trecho (minha, do servidor, as duas ou texto editado), preservando o fim de linha do arquivo;
+  - binário: escolher a versão inteira de um lado;
+  - propriedade: ficar com o seu valor ou o do servidor;
+  - árvore: o app mostra o que aconteceu e os comandos para resolver no terminal.
 - Grupos de projetos (um projeto pode estar em vários) para filtrar a tela.
 - Padrões de arquivos ignorados, globais ou por projeto. Ignorados aparecem recolhidos e nunca vão entrar em commit.
-- Modo somente leitura, ligado por padrão, com chaves separadas para operações locais e para commit.
+- Modo somente leitura, ligado por padrão, com chaves separadas para operações locais e para commit. Com a chave ligada, o servidor recusa a operação.
+- Toda operação que grava mostra antes o comando svn exato e pede confirmação.
 - Console com todos os comandos svn que o app executou.
 
-Ainda não há operações que gravam (update, resolver conflito, commit, revert). Elas vêm nas próximas etapas.
+Ainda não há commit, revert nem cleanup. Eles vêm nas próximas etapas.
 
 ## Requisitos
 
@@ -96,10 +104,9 @@ Servem também para arquivos versionados, que o `svn:ignore` não cobre.
 
 ## Próximas etapas
 
-1. Status do servidor, diff "o que vai chegar", update com prévia e resolução de conflitos.
-2. Commit de arquivos de vários projetos numa única revision.
-3. Histórico por projeto, grupo e arquivo.
-4. Revert, cleanup, consulta periódica ao servidor e inicialização pelo systemd.
+1. Commit de arquivos de vários projetos numa única revision.
+2. Histórico por projeto, grupo e arquivo.
+3. Revert, cleanup, consulta periódica ao servidor e inicialização pelo systemd.
 
 ## Licença
 

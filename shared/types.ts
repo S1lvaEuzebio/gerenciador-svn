@@ -65,6 +65,82 @@ export interface StatusResponse {
   statuses: ProjectStatus[];
 }
 
+/** Valores de `repos-status/@item` do `svn status -u --xml`. */
+export type RemoteItem = 'added' | 'deleted' | 'modified' | 'replaced' | 'none';
+
+/** Mudança que está no servidor e chega no próximo update. */
+export interface IncomingChange {
+  /** Relativo à working copy, com `/`. */
+  path: string;
+  kind: NodeKind;
+  item: RemoteItem;
+  /** Propriedades alteradas no servidor. */
+  props: boolean;
+  /** O caminho também tem mudança local (conteúdo ou propriedade): o update pode dar conflito. */
+  localChange: boolean;
+  ignored: boolean;
+}
+
+export interface ProjectRemoteStatus {
+  projectId: string;
+  /** Revisão do servidor usada na comparação (`against`). */
+  headRevision: number | null;
+  incoming: IncomingChange[];
+  error?: string;
+}
+
+export interface RemoteStatusResponse {
+  statuses: ProjectRemoteStatus[];
+}
+
+export interface RevisionSummary {
+  revision: number;
+  author: string;
+  date: string;
+  message: string;
+}
+
+export interface UpdatePreviewProject {
+  projectId: string;
+  /** Revisão atual da working copy. */
+  fromRevision: number;
+  headRevision: number | null;
+  incoming: IncomingChange[];
+  /** Revisões do servidor que mexem nos caminhos que vão chegar. */
+  revisions: RevisionSummary[];
+  /** Comando exato do update; `null` quando não há nada para receber. */
+  command: string | null;
+  error?: string;
+}
+
+export interface UpdatePreview {
+  projects: UpdatePreviewProject[];
+}
+
+export type StepState = 'queued' | 'running' | 'done' | 'failed';
+
+export interface OperationStep {
+  projectId: string;
+  command: string;
+  state: StepState;
+  /** Saída do svn até agora (stdout e stderr). */
+  output: string;
+}
+
+/** Operação de gravação em andamento, uma etapa por working copy. */
+export interface Operation {
+  id: number;
+  title: string;
+  done: boolean;
+  steps: OperationStep[];
+}
+
+/**
+ * Diff a mostrar: `local` = minhas mudanças (BASE × cópia local), `incoming` = o que vai chegar
+ * (BASE × servidor), `local-head` = cópia local comparada com o servidor.
+ */
+export type DiffCompare = 'local' | 'incoming' | 'local-head';
+
 export type Eol = 'crlf' | 'lf' | 'mixed' | 'none';
 
 export type DiffResponse =
@@ -79,6 +155,67 @@ export type DiffResponse =
   | { kind: 'binary'; originalSize: number | null; modifiedSize: number; propsDiff?: string }
   | { kind: 'too-large'; originalSize: number | null; modifiedSize: number }
   | { kind: 'directory'; item: ItemStatus; propsDiff?: string };
+
+/** Opções de `svn resolve --accept` oferecidas na tela. */
+export type ResolveAccept = 'mine-conflict' | 'theirs-conflict' | 'mine-full' | 'theirs-full';
+
+/** Trecho do arquivo em conflito, lido dos marcadores que o svn grava. */
+export type ConflictSegment =
+  | { kind: 'text'; text: string }
+  | {
+      kind: 'conflict';
+      mine: string;
+      /** Versão da base; `null` quando o svn não gravou a seção `|||||||`. */
+      base: string | null;
+      theirs: string;
+    };
+
+/** Escolha para um trecho em conflito no editor de mesclagem. */
+export type MergeChoice = { pick: 'mine' | 'theirs' | 'both' } | { edit: string };
+
+export interface TextConflict {
+  binary: boolean;
+  /** Revisão da base antes do update e a que veio do servidor. */
+  baseRevision: number | null;
+  theirsRevision: number | null;
+  sizes: { mine: number | null; base: number | null; theirs: number | null };
+  /** Versão local (`.mine`) e do servidor (`.rNEW`) para comparar; `null` se binário ou grande. */
+  compare: { mine: string; theirs: string } | null;
+  /** Dados do editor de mesclagem; `null` quando não dá para mesclar no app. */
+  merge: { segments: ConflictSegment[]; fingerprint: string; eol: Eol } | null;
+  /** Por que o editor não está disponível, quando `merge` é `null`. */
+  mergeUnavailable?: string;
+}
+
+export interface TreeConflict {
+  operation: string;
+  /** O que veio do servidor (`edit`, `delete`, `add`, `replace`). */
+  action: string;
+  /** O que havia na cópia local (`edit`, `delete`, `missing`, `obstructed`, ...). */
+  reason: string;
+  kind: string;
+  /** Comandos sugeridos para resolver no terminal (o app não resolve conflito de árvore). */
+  commands: string[];
+}
+
+export interface ConflictDetails {
+  path: string;
+  text?: TextConflict;
+  /** Conteúdo do arquivo `.prej` que o svn grava no conflito de propriedade. */
+  property?: string;
+  tree?: TreeConflict;
+  /** Arquivos auxiliares que o svn criou; somem ao resolver. */
+  auxFiles: string[];
+  /** Opções de `svn resolve` que servem para este caminho, com o comando exato de cada uma. */
+  accepts: Partial<Record<ResolveAccept, string>>;
+  /** Comando que grava o resultado do editor de mesclagem. */
+  mergeCommand: string | null;
+}
+
+export interface CommandResult {
+  command: string;
+  output: string;
+}
 
 export interface ConsoleEntry {
   id: number;

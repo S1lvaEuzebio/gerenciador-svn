@@ -89,3 +89,16 @@ export function resolveInProject(project: Project, relativePath: string): string
   }
   return absolute;
 }
+
+/** Caminho absoluto de dentro do projeto → relativo à working copy, com `/`. */
+export function relativeToProject(project: Project, absolute: string): string {
+  return relative(project.id, absolute).split(sep).join('/');
+}
+
+const encodePath = (path: string) => path.split('/').map(encodeURIComponent).join('/');
+
+/** URL do caminho no repositório, presa à revisão (`url@rev`). */
+export function repoUrl(project: Project, relativePath: string, revision: number): string {
+  const base = `${project.repoRootUrl}${encodePath(project.relativeUrl.slice(1))}`;
+  return `${relativePath === '' ? base : `${base}/${encodePath(relativePath)}`}@${revision}`;
+}

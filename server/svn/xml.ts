@@ -1,6 +1,7 @@
 import { XMLParser } from 'fast-xml-parser';
 
-const ARRAY_TAGS = new Set(['entry', 'target']);
+// Tags que podem repetir (`conflict`: texto e propriedade no mesmo arquivo; `path`: no `svn log -v`).
+const ARRAY_TAGS = new Set(['entry', 'target', 'logentry', 'path', 'conflict']);
 
 const parser = new XMLParser({
   ignoreAttributes: false,

@@ -10,7 +10,7 @@ import { getConfig } from './config.ts';
 export function requireUnlocked(kind: keyof ReadOnlyConfig): RequestHandler {
   return (_req, res, next) => {
     if (getConfig().readOnly[kind]) {
-      res.status(423).json({ error: `modo somente leitura: ${LOCK_LABELS[kind]} travado` });
+      res.status(423).json({ error: `modo somente leitura ligado para ${LOCK_LABELS[kind]}` });
       return;
     }
     next();

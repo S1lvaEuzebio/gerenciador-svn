@@ -1,13 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Group, IgnoreConfig, ReadOnlyConfig } from '@shared/schema.ts';
-import type { ConfigResponse } from '@shared/types.ts';
-import { api } from './api';
+import type { ConfigResponse, MergeChoice, ResolveAccept } from '@shared/types.ts';
+import { api, type DiffRequest } from './api';
 
 export const keys = {
   config: ['config'] as const,
   projects: ['projects'] as const,
   status: ['status'] as const,
-  diff: (project: string, path: string, force: boolean) => ['diff', project, path, force] as const,
+  remoteStatus: ['remote-status'] as const,
+  diff: (request: DiffRequest) => ['diff', request] as const,
+  conflict: (project: string, path: string) => ['conflict', project, path] as const,
+  updatePreview: (projects: string[]) => ['update-preview', projects] as const,
+  operation: (id: number) => ['operation', id] as const,
   console: ['console'] as const,
 };
 
@@ -29,11 +33,54 @@ export function useStatus(enabled: boolean) {
   return useQuery({ queryKey: keys.status, queryFn: api.status, enabled });
 }
 
-export function useDiff(selection: { projectId: string; path: string } | null, force: boolean) {
+/**
+ * O que vai chegar do servidor. Consulta a rede (~2 s por working copy, em paralelo), então
+ * só roda ao abrir e pelo botão Recarregar; não refaz ao focar a janela.
+ */
+export function useRemoteStatus(enabled: boolean) {
   return useQuery({
-    queryKey: keys.diff(selection?.projectId ?? '', selection?.path ?? '', force),
-    queryFn: () => api.diff(selection!.projectId, selection!.path, force),
-    enabled: selection !== null,
+    queryKey: keys.remoteStatus,
+    queryFn: api.remoteStatus,
+    enabled,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useDiff(request: DiffRequest | null) {
+  return useQuery({
+    queryKey: keys.diff(request!),
+    queryFn: () => api.diff(request!),
+    enabled: request !== null,
+  });
+}
+
+export function useConflict(project: string, path: string) {
+  return useQuery({
+    queryKey: keys.conflict(project, path),
+    queryFn: () => api.conflict(project, path),
+  });
+}
+
+/** Prévia sempre nova: refeita cada vez que a tela de update abre. */
+export function useUpdatePreview(projects: string[]) {
+  return useQuery({
+    queryKey: keys.updatePreview(projects),
+    queryFn: () => api.updatePreview(projects),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** Acompanha uma operação de gravação até terminar. */
+export function useOperation(id: number | null) {
+  return useQuery({
+    queryKey: keys.operation(id ?? 0),
+    queryFn: () => api.operation(id!),
+    enabled: id !== null,
+    refetchInterval: (query) => (query.state.data?.done ? false : 500),
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -48,14 +95,45 @@ export function useConsole(open: boolean) {
   });
 }
 
-/** Rodescobre os projetos e só depois refaz o status, que usa a lista descoberta. */
+/** Rodescobre os projetos e só depois refaz os status, que usam a lista descoberta. */
 export function useRefreshAll() {
   const queryClient = useQueryClient();
   return async () => {
     await queryClient.refetchQueries({ queryKey: keys.projects });
-    await queryClient.invalidateQueries({ queryKey: keys.status });
-    await queryClient.invalidateQueries({ queryKey: ['diff'] });
+    await Promise.all(
+      [keys.status, keys.remoteStatus, ['diff'], ['conflict']].map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
   };
+}
+
+/** Depois de resolver um conflito: status local, diffs e detalhes do conflito mudaram. */
+function useAfterLocalWrite() {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all(
+      [keys.status, ['diff'], ['conflict']].map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    );
+}
+
+export function useResolve(project: string, path: string) {
+  const after = useAfterLocalWrite();
+  return useMutation({
+    mutationFn: (accept: ResolveAccept) => api.resolve(project, path, accept),
+    onSuccess: after,
+  });
+}
+
+export function useSaveMerge(project: string, path: string) {
+  const after = useAfterLocalWrite();
+  return useMutation({
+    mutationFn: ({ fingerprint, choices }: { fingerprint: string; choices: MergeChoice[] }) =>
+      api.saveMerge(project, path, fingerprint, choices),
+    onSuccess: after,
+  });
 }
 
 /** Salva parte da configuração, guarda a resposta no cache e roda `after` antes de concluir. */
