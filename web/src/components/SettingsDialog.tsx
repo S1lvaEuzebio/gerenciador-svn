@@ -21,10 +21,11 @@ import {
   useSaveCommitReferenceTemplate,
   useSaveIgnore,
   useSaveReadOnly,
+  useSaveRemotePolling,
   useSaveRoots,
 } from '@/lib/queries';
 
-export type SettingsTab = 'roots' | 'ignore' | 'read-only' | 'commit';
+export type SettingsTab = 'roots' | 'ignore' | 'read-only' | 'server' | 'commit';
 
 const lines = (text: string) => text.split('\n');
 const joinLines = (values: string[]) => values.join('\n');
@@ -198,6 +199,30 @@ function ReadOnlyTab({ config }: { config: AppConfig }) {
   );
 }
 
+function ServerTab({ config }: { config: AppConfig }) {
+  const save = useSaveRemotePolling();
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-3 rounded-md border p-3">
+        <div className="flex-1">
+          <div className="text-sm font-medium">Consultar o servidor a cada 10 minutos</div>
+          <div className="text-muted-foreground text-xs">
+            Além de ao abrir e pelo botão Recarregar. O que vai chegar aparece como número no título
+            da janela e no ícone. Só consulta: o update continua manual.
+          </div>
+        </div>
+        <Switch
+          aria-label="Consultar o servidor a cada 10 minutos"
+          checked={config.remotePolling}
+          disabled={save.isPending}
+          onCheckedChange={(checked) => save.mutate(checked)}
+        />
+      </div>
+      {save.error && <p className="text-destructive text-sm">{save.error.message}</p>}
+    </div>
+  );
+}
+
 function CommitTab({ config }: { config: AppConfig }) {
   const [template, setTemplate] = useState(config.commitReferenceTemplate ?? '');
   const save = useSaveCommitReferenceTemplate();
@@ -267,6 +292,7 @@ export function SettingsDialog({
             <TabsTrigger value="roots">Pastas raiz</TabsTrigger>
             <TabsTrigger value="ignore">Ignorados</TabsTrigger>
             <TabsTrigger value="read-only">Somente leitura</TabsTrigger>
+            <TabsTrigger value="server">Servidor</TabsTrigger>
             <TabsTrigger value="commit">Commit</TabsTrigger>
           </TabsList>
           <TabsContent value="roots">
@@ -277,6 +303,9 @@ export function SettingsDialog({
           </TabsContent>
           <TabsContent value="read-only">
             <ReadOnlyTab config={config} />
+          </TabsContent>
+          <TabsContent value="server">
+            <ServerTab config={config} />
           </TabsContent>
           <TabsContent value="commit">
             <CommitTab config={config} />

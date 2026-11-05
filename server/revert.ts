@@ -1,0 +1,169 @@
+import { isRevertable } from '../shared/status.ts';
+import type {
+  ItemStatus,
+  Operation,
+  Project,
+  RevertItem,
+  RevertPreview,
+  RevertRequest,
+} from '../shared/types.ts';
+import { isChange, nodeKind, versionedKind } from './local-status.ts';
+import { startOperation, type StepSpec } from './operations.ts';
+import {
+  byPath,
+  folderTree,
+  groupByProject,
+  isInside,
+  itemLabel,
+  planFingerprint,
+  previewOf,
+  requireSamePlan,
+} from './plan.ts';
+import { relativeToProject, resolveInProject } from './projects.ts';
+import { localTarget, svnCommandLine } from './svn/run.ts';
+import { svnStatus } from './svn/status.ts';
+
+/**
+ * Pastas que voltam inteiras (`--depth infinity`): só a pasta, sem o que tem dentro, deixaria
+ * o conteúdo adicionado, apagado ou faltando.
+ */
+const WHOLE_FOLDER = new Set<ItemStatus>(['added', 'deleted', 'missing', 'replaced']);
+
+interface ProjectPlan {
+  project: Project;
+  items: RevertItem[];
+  specs: StepSpec[];
+}
+
+/**
+ * Lista final de um projeto: os caminhos pedidos e, de cada pasta que volta inteira, o que
+ * muda dentro dela. Não versionado vai para `skipped`; sem mudança, para `errors`.
+ */
+async function planProject(
+  project: Project,
+  paths: string[],
+  errors: string[],
+  skipped: string[],
+): Promise<ProjectPlan> {
+  const entries = new Map(
+    (await svnStatus(project.id)).map((e) => [relativeToProject(project, e.path), e]),
+  );
+  const items = new Map<string, RevertItem>();
+
+  for (const path of paths) {
+    const absolute = resolveInProject(project, path);
+    const entry = entries.get(path);
+    if (!entry || !isChange(entry)) {
+      errors.push(`${itemLabel(project, path)}: não tem mudança para reverter`);
+      continue;
+    }
+    if (!isRevertable(entry)) {
+      skipped.push(itemLabel(project, path));
+      continue;
+    }
+    items.set(path, {
+      path,
+      kind: await versionedKind(absolute),
+      item: entry.item,
+      props: entry.props,
+      treeConflict: entry.treeConflict,
+    });
+  }
+
+  const candidates = [...items.values()].filter(
+    (i) => i.kind === 'dir' && WHOLE_FOLDER.has(i.item),
+  );
+  const wholeFolders = candidates.filter(
+    (f) => !candidates.some((other) => isInside(f.path, other.path)),
+  );
+  for (const folder of wholeFolders) {
+    const inside: RevertItem[] =
+      folder.item === 'deleted' || folder.item === 'missing'
+        ? (await folderTree(project, folder.path)).map((node) => ({
+            ...node,
+            item: folder.item,
+            props: 'none',
+            treeConflict: false,
+          }))
+        : await Promise.all(
+            [...entries]
+              .filter(([path, e]) => isInside(path, folder.path) && isChange(e) && isRevertable(e))
+              .map(async ([path, e]) => ({
+                path,
+                kind: await nodeKind(resolveInProject(project, path)),
+                item: e.item,
+                props: e.props,
+                treeConflict: e.treeConflict,
+              })),
+          );
+    for (const item of inside) {
+      if (!items.has(item.path)) items.set(item.path, { ...item, included: 'content' });
+    }
+  }
+
+  const targets = (keep: (item: RevertItem) => boolean) =>
+    [...items.values()]
+      .filter((i) => i.included === undefined && keep(i))
+      .sort(byPath)
+      .map((i) => localTarget(resolveInProject(project, i.path)));
+  const emptyDepthTargets = targets(
+    (i) => !wholeFolders.includes(i) && !wholeFolders.some((f) => isInside(i.path, f.path)),
+  );
+  const infinityTargets = targets((i) => wholeFolders.includes(i));
+  const specs: StepSpec[] = [];
+  if (emptyDepthTargets.length > 0) {
+    specs.push({
+      label: project.name,
+      projectIds: [project.id],
+      args: ['revert', '--depth', 'empty', ...emptyDepthTargets],
+    });
+  }
+  if (infinityTargets.length > 0) {
+    specs.push({
+      label: `${project.name}: pastas inteiras`,
+      projectIds: [project.id],
+      args: ['revert', '--depth', 'infinity', ...infinityTargets],
+    });
+  }
+  return { project, items: [...items.values()].sort(byPath), specs };
+}
+
+interface Plan extends RevertPreview {
+  specs: StepSpec[];
+}
+
+async function buildPlan({ items }: RevertRequest): Promise<Plan> {
+  const errors: string[] = [];
+  const skipped: string[] = [];
+  const plans = await Promise.all(
+    (await groupByProject(items)).map((g) => planProject(g.project, g.paths, errors, skipped)),
+  );
+  const specs = plans.flatMap((p) => p.specs);
+  const commands = specs.map((s) => svnCommandLine(s.args));
+  const projects = plans
+    .filter((p) => p.items.length > 0)
+    .map((p) => ({ projectId: p.project.id, items: p.items }));
+  return {
+    projects,
+    commands,
+    errors,
+    skipped,
+    fingerprint: planFingerprint(commands, projects),
+    specs,
+  };
+}
+
+/** Prévia do revert: lista final por projeto (com o que volta junto) e os comandos. */
+export async function revertPreview(request: RevertRequest): Promise<RevertPreview> {
+  return previewOf(await buildPlan(request));
+}
+
+/**
+ * Roda o revert confirmado, cada projeto na fila da sua working copy. Monta o plano de novo e só
+ * segue se for o mesmo da prévia.
+ */
+export async function startRevert(request: RevertRequest, fingerprint: string): Promise<Operation> {
+  const plan = await buildPlan(request);
+  requireSamePlan(plan, fingerprint, 'revert');
+  return startOperation('Revert', plan.specs, 'parallel');
+}

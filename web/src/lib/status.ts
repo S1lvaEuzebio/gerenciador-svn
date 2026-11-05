@@ -1,7 +1,7 @@
 import { isConflicted } from '@shared/status.ts';
 import type { ChangeAction, CommitAction, IncomingChange, LocalChange } from '@shared/types.ts';
 
-export { isPropsOnly } from '@shared/status.ts';
+export { isPropsOnly, isRevertable } from '@shared/status.ts';
 
 export interface StatusLabel {
   letter: string;
@@ -37,7 +37,9 @@ const TREE_CONFLICT: StatusLabel = {
   className: 'text-red-600 dark:text-red-400 font-bold',
 };
 
-export function statusLabel(change: LocalChange): StatusLabel {
+export function statusLabel(
+  change: Pick<LocalChange, 'item' | 'props' | 'treeConflict'>,
+): StatusLabel {
   if (change.treeConflict) return TREE_CONFLICT;
   const item = ITEM_LABELS[change.item];
   if (item) return item;

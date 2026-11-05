@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import type { AppConfig } from '../shared/schema.ts';
@@ -13,12 +12,19 @@ import type {
   Project,
 } from '../shared/types.ts';
 import { isConflicted, isPropsOnly } from '../shared/status.ts';
-import { HttpError } from './http-error.ts';
 import { projectIgnoreMatcher } from './ignore.ts';
-import { isChange, nodeKind } from './local-status.ts';
+import { isChange, nodeKind, versionedKind } from './local-status.ts';
 import { startOperation, type StepSpec } from './operations.ts';
-import { relativeToProject, requireProject, resolveInProject } from './projects.ts';
-import { svnInfo, svnTree } from './svn/info.ts';
+import {
+  byPath,
+  folderTree,
+  groupByProject,
+  itemLabel,
+  planFingerprint,
+  previewOf,
+  requireSamePlan,
+} from './plan.ts';
+import { relativeToProject, resolveInProject } from './projects.ts';
 import { localTarget, svnCommandLine } from './svn/run.ts';
 import { svnRemoteStatus, svnStatus, type StatusEntry } from './svn/status.ts';
 
@@ -39,10 +45,6 @@ function actionFor(entry: StatusEntry): CommitAction | null {
   if (action) return action;
   return isPropsOnly(entry) ? 'props' : null;
 }
-
-/** Ordem por código, para a pasta vir sempre antes do que tem dentro (`a` < `a/b`). */
-const byPath = (a: { path: string }, b: { path: string }) =>
-  a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
 
 /** Arquivos e pastas dentro de uma pasta nova, sem o que casa com os padrões de ignorados. */
 async function folderContent(
@@ -91,7 +93,7 @@ async function planProject(
   const add = (item: CommitItem) => {
     if (!items.has(item.path)) items.set(item.path, item);
   };
-  const label = (path: string) => (path === '' ? project.name : `${project.name}/${path}`);
+  const label = (path: string) => itemLabel(project, path);
 
   for (const path of paths) {
     const absolute = resolveInProject(project, path);
@@ -113,15 +115,7 @@ async function planProject(
       errors.push(`${label(path)}: o estado "${entry.item}" não pode ser comitado`);
       continue;
     }
-    // Item apagado ou faltando não existe mais no disco: o tipo vem do svn.
-    const onDisk = await nodeKind(absolute);
-    const kind =
-      onDisk !== 'unknown'
-        ? onDisk
-        : await svnInfo(absolute).then(
-            (info) => info.kind,
-            () => onDisk,
-          );
+    const kind = await versionedKind(absolute);
     add({ path, kind, action });
 
     if (action === 'to-add' && kind === 'dir') {
@@ -141,10 +135,7 @@ async function planProject(
     (i) => (i.action === 'deleted' || i.action === 'to-delete') && i.kind === 'dir',
   );
   for (const folder of deletedFolders) {
-    const tree = await svnTree(resolveInProject(project, folder.path));
-    const content = tree
-      .map((node) => ({ ...node, path: relativeToProject(project, node.path) }))
-      .filter((node) => node.path !== folder.path);
+    const content = await folderTree(project, folder.path);
     const ignored = content.filter((node) => isIgnored(node.path)).map((node) => node.path);
     if (ignored.length > 0) {
       errors.push(
@@ -213,16 +204,13 @@ async function buildPlan(
   const errors: string[] = [];
   if (message.trim() === '') errors.push('a mensagem do commit é obrigatória');
 
-  const pathsByProject = new Map<string, string[]>();
-  for (const { projectId, path } of items) {
-    pathsByProject.set(projectId, [...(pathsByProject.get(projectId) ?? []), path]);
-  }
-  const projects = await Promise.all([...pathsByProject.keys()].map((id) => requireProject(id)));
+  const groups = await groupByProject(items);
+  const projects = groups.map((g) => g.project);
   if (new Set(projects.map((p) => p.repoRootUrl)).size > 1) {
     errors.push('os projetos marcados são de repositórios diferentes; um commit vale para um só');
   }
   const plans = await Promise.all(
-    projects.map((p) => planProject(p, pathsByProject.get(p.id)!, config, checkRemote, errors)),
+    groups.map((g) => planProject(g.project, g.paths, config, checkRemote, errors)),
   );
 
   const all = plans.flatMap((plan) =>
@@ -260,7 +248,11 @@ async function buildPlan(
     })),
     commands,
     errors,
-    fingerprint: createHash('sha256').update(commands.join('\n')).digest('hex'),
+    // Sem os desatualizados: a execução não consulta o servidor de novo.
+    fingerprint: planFingerprint(
+      commands,
+      plans.map((p) => p.items),
+    ),
     specs,
   };
 }
@@ -270,8 +262,7 @@ export async function commitPreview(
   request: CommitRequest,
   config: AppConfig,
 ): Promise<CommitPreview> {
-  const { specs: _specs, ...preview } = await buildPlan(request, config, true);
-  return preview;
+  return previewOf(await buildPlan(request, config, true));
 }
 
 /**
@@ -284,9 +275,6 @@ export async function startCommit(
   fingerprint: string,
 ): Promise<Operation> {
   const plan = await buildPlan(request, config, false);
-  if (plan.errors.length > 0) throw new HttpError(400, plan.errors.join('; '));
-  if (plan.fingerprint !== fingerprint) {
-    throw new HttpError(409, 'a lista do commit mudou desde a prévia; confira de novo');
-  }
+  requireSamePlan(plan, fingerprint, 'commit');
   return startOperation('Commit', plan.specs, 'sequence');
 }

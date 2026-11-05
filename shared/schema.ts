@@ -43,6 +43,8 @@ export const configSchema = z.looseObject({
   ignore: ignoreSchema.default({ global: DEFAULT_IGNORE_PATTERNS, projects: {} }),
   readOnly: readOnlySchema.default({ local: true, commit: true }),
   commitReferenceTemplate: commitReferenceSchema.default(null),
+  /** Consulta o servidor a cada 10 minutos, além de ao abrir e pelo botão Recarregar. */
+  remotePolling: z.boolean().default(true),
 });
 
 /**
@@ -65,11 +67,19 @@ export const resolveAcceptSchema = z.enum([
   'theirs-full',
 ]);
 
+/** Caminhos escolhidos na tela, de um ou mais projetos. */
+const projectItemsSchema = z
+  .array(z.object({ projectId: z.string().min(1), path: z.string() }))
+  .min(1);
+
 /** Caminhos marcados para o commit e a mensagem final. */
 export const commitRequestSchema = z.object({
-  items: z.array(z.object({ projectId: z.string().min(1), path: z.string() })).min(1),
+  items: projectItemsSchema,
   message: z.string(),
 });
+
+/** Caminhos a reverter. */
+export const revertRequestSchema = z.object({ items: projectItemsSchema });
 
 /** Escolha para um trecho em conflito no editor de mesclagem. */
 export const mergeChoiceSchema = z.union([
@@ -86,3 +96,4 @@ export type HistoryCompare = z.infer<typeof historyCompareSchema>;
 export type ResolveAccept = z.infer<typeof resolveAcceptSchema>;
 export type MergeChoice = z.infer<typeof mergeChoiceSchema>;
 export type CommitRequest = z.infer<typeof commitRequestSchema>;
+export type RevertRequest = z.infer<typeof revertRequestSchema>;

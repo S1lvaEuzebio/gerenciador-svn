@@ -1,6 +1,7 @@
 import type { DiffCompare, ProjectRemoteStatus } from '@shared/types.ts';
-import { FileDiff } from 'lucide-react';
+import { FileDiff, Undo2 } from 'lucide-react';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { useDiff } from '@/lib/queries';
 import { useDiffDisplay } from '@/lib/use-diff-display';
 import { DiffDisplayControls, DiffResult, HistoryButton, SegmentedControl } from './DiffView';
@@ -42,11 +43,14 @@ export function DiffPanel({
   selection,
   remote,
   onHistory,
+  onRevert,
 }: {
   selection: FileSelection | null;
   remote: ProjectRemoteStatus | undefined;
   /** Abre o histórico do arquivo; ausente quando o arquivo ainda não está no servidor. */
   onHistory?: () => void;
+  /** Reverte a mudança local (com confirmação); ausente quando não há o que reverter. */
+  onRevert?: () => void;
 }) {
   const headRevision = remote?.headRevision ?? null;
   const incoming = remote?.incoming.find((c) => c.path === selection?.path);
@@ -82,6 +86,17 @@ export function DiffPanel({
           </div>
         </div>
         {onHistory && <HistoryButton onClick={onHistory} />}
+        {onRevert && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRevert}
+            title="Desfaz a mudança local deste item (com confirmação)"
+          >
+            <Undo2 />
+            Reverter…
+          </Button>
+        )}
         <SegmentedControl
           options={options.map((value) => ({
             value,

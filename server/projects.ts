@@ -80,6 +80,11 @@ export async function requireProject(id: string): Promise<Project> {
   return project;
 }
 
+/** Vários ids de uma vez; todos precisam ser de projetos descobertos. */
+export async function requireProjects(ids: string[]): Promise<Project[]> {
+  return Promise.all(ids.map((id) => requireProject(id)));
+}
+
 /** Resolve um caminho relativo dentro do projeto, recusando qualquer coisa que escape dele. */
 export function resolveInProject(project: Project, relativePath: string): string {
   const absolute = resolve(project.id, relativePath);

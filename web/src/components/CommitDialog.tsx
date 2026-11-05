@@ -13,7 +13,7 @@ import { useCommitPreview, useOperationRun } from '@/lib/queries';
 import { commitActionLabel, displayPath } from '@/lib/status';
 import { cn } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
-import { OperationProgress } from './OperationProgress';
+import { OperationActions, OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
 
 const INCLUDED: Record<NonNullable<CommitItem['included']>, string> = {
@@ -159,27 +159,13 @@ export function CommitDialog({
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          {!run.started ? (
-            <>
-              <Button variant="outline" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => run.start(data!.fingerprint)}
-                disabled={blocked || run.starting}
-              >
-                {run.starting
-                  ? 'Iniciando…'
-                  : `Comitar (${total} ${total === 1 ? 'item' : 'itens'})`}
-              </Button>
-            </>
-          ) : (
-            <Button onClick={onClose} disabled={run.busy}>
-              Fechar
-            </Button>
-          )}
-        </div>
+        <OperationActions
+          run={run}
+          onClose={onClose}
+          confirmLabel={`Comitar (${total} ${total === 1 ? 'item' : 'itens'})`}
+          confirmDisabled={blocked}
+          onConfirm={() => run.start(data!.fingerprint)}
+        />
       </DialogContent>
     </Dialog>
   );

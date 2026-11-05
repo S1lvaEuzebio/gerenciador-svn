@@ -8,6 +8,7 @@ import type {
   MergeChoice,
   Operation,
   ResolveAccept,
+  RevertRequest,
 } from '@shared/types.ts';
 import { api, type DiffRequest, type HistoryDiffRequest, type HistoryRequest } from './api';
 
@@ -23,6 +24,8 @@ export const keys = {
     ['conflict', project, path, force] as const,
   updatePreview: (projects: string[]) => ['update-preview', projects] as const,
   commitPreview: (commit: CommitRequest) => ['commit-preview', commit] as const,
+  revertPreview: (revert: RevertRequest) => ['revert-preview', revert] as const,
+  cleanupPreview: (projects: string[]) => ['cleanup-preview', projects] as const,
   operation: (id: number) => ['operation', id] as const,
   console: ['console'] as const,
 };
@@ -45,17 +48,23 @@ export function useStatus(enabled: boolean) {
   return useQuery({ queryKey: keys.status, queryFn: api.status, enabled });
 }
 
+/** Intervalo da consulta periódica ao servidor. */
+const REMOTE_POLL_MS = 10 * 60 * 1000;
+
 /**
  * O que vai chegar do servidor. Consulta a rede (~2 s por working copy, em paralelo), então
- * só roda ao abrir e pelo botão Recarregar; não refaz ao focar a janela.
+ * roda ao abrir, pelo botão Recarregar e, com `polling`, a cada 10 minutos (também com a
+ * janela em segundo plano, para o contador do título); não refaz ao focar a janela.
  */
-export function useRemoteStatus(enabled: boolean) {
+export function useRemoteStatus(enabled: boolean, polling: boolean) {
   return useQuery({
     queryKey: keys.remoteStatus,
     queryFn: api.remoteStatus,
     enabled,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+    refetchInterval: polling ? REMOTE_POLL_MS : false,
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -98,23 +107,42 @@ export function useConflict(project: string, path: string, force: boolean) {
   });
 }
 
-/** Prévia sempre nova: refeita cada vez que a tela de update abre. */
+/** Prévias de operações de gravação: sempre novas, refeitas a cada abertura da janela. */
+const PREVIEW = { gcTime: 0, refetchOnWindowFocus: false } as const;
+
+/** Prévia do update: revisões, arquivos e comandos. */
 export function useUpdatePreview(projects: string[]) {
   return useQuery({
     queryKey: keys.updatePreview(projects),
     queryFn: () => api.updatePreview(projects),
-    gcTime: 0,
-    refetchOnWindowFocus: false,
+    ...PREVIEW,
   });
 }
 
-/** Prévia do commit: lista final, desatualizados e comandos. Refeita a cada abertura. */
+/** Prévia do commit: lista final, desatualizados e comandos. */
 export function useCommitPreview(commit: CommitRequest) {
   return useQuery({
     queryKey: keys.commitPreview(commit),
     queryFn: () => api.commitPreview(commit),
-    gcTime: 0,
-    refetchOnWindowFocus: false,
+    ...PREVIEW,
+  });
+}
+
+/** Prévia do revert: lista final, o que fica de fora e comandos. */
+export function useRevertPreview(revert: RevertRequest) {
+  return useQuery({
+    queryKey: keys.revertPreview(revert),
+    queryFn: () => api.revertPreview(revert),
+    ...PREVIEW,
+  });
+}
+
+/** Prévia do cleanup: os comandos de cada projeto. */
+export function useCleanupPreview(projects: string[]) {
+  return useQuery({
+    queryKey: keys.cleanupPreview(projects),
+    queryFn: () => api.cleanupPreview(projects),
+    ...PREVIEW,
   });
 }
 
@@ -161,12 +189,12 @@ export function useRefreshAll() {
 }
 
 /**
- * Ciclo de uma operação de gravação nas janelas de update e commit: começa, acompanha a saída e,
- * ao terminar, recarrega tudo e avisa se todas as etapas deram certo.
+ * Ciclo de uma operação de gravação nas janelas de update, commit, revert e cleanup: começa,
+ * acompanha a saída e, ao terminar, recarrega tudo e avisa se todas as etapas deram certo.
  */
 export function useOperationRun<T>(
   start: (args: T) => Promise<Operation>,
-  onDone: (succeeded: boolean) => void,
+  onDone?: (succeeded: boolean) => void,
 ) {
   const [operationId, setOperationId] = useState<number | null>(null);
   const operation = useOperation(operationId);
@@ -176,7 +204,7 @@ export function useOperationRun<T>(
 
   const refreshAll = useRefreshAll();
   const finish = useEffectEvent(() => {
-    onDone(succeeded);
+    onDone?.(succeeded);
     void refreshAll();
   });
   useEffect(() => {
@@ -252,6 +280,10 @@ export function useSaveIgnore() {
 
 export function useSaveReadOnly() {
   return useConfigMutation((readOnly: ReadOnlyConfig) => api.saveReadOnly(readOnly));
+}
+
+export function useSaveRemotePolling() {
+  return useConfigMutation((remotePolling: boolean) => api.saveRemotePolling(remotePolling));
 }
 
 export function useSaveCommitReferenceTemplate() {

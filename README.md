@@ -4,13 +4,11 @@ Interface web local para trabalhar com várias working copies SVN ao mesmo tempo
 
 Feito para quem mantém projetos antigos em SVN e quer uma ferramenta leve (um processo Node e uma aba do navegador), sem depender de IDE.
 
-> Em desenvolvimento. O que já funciona está em [Estado atual](#estado-atual).
-
-## Estado atual
+## O que faz
 
 - Descobre as working copies SVN dentro de uma ou mais pastas raiz (só as subpastas diretas; o resto, como projetos git, fica de fora).
 - Mostra as mudanças locais de cada projeto, com contadores na barra lateral, e atualiza sozinho quando a janela ganha foco.
-- Mostra o que vai chegar do servidor (aba **Servidor**), consultado ao abrir e pelo botão Recarregar, com aviso quando o arquivo também tem mudança local ou casa com um padrão de ignorados.
+- Mostra o que vai chegar do servidor (aba **Servidor**), com aviso quando o arquivo também tem mudança local ou casa com um padrão de ignorados. Consulta ao abrir, pelo botão Recarregar e a cada 10 minutos (dá para desligar em **Configurações → Servidor**). O número de mudanças a chegar aparece no título da janela e no ícone.
 - Três diffs, lado a lado ou unificado: "minhas mudanças" (cópia local × base), "o que vai chegar" (base × servidor) e cópia local × servidor. Opção de ignorar espaços, aviso de troca de fim de linha, diff de propriedades e proteção para arquivos grandes e binários.
 - Update por projeto, grupo ou tudo, com prévia (revisões, arquivos, avisos e o comando exato) antes de confirmar. Vai sempre até a revisão mostrada na prévia, deixa os conflitos para resolver na tela (`--accept postpone`) e mostra a saída do svn em tempo real. Cada working copy roda numa fila própria, em paralelo com as outras.
 - Resolução de conflitos:
@@ -28,13 +26,13 @@ Feito para quem mantém projetos antigos em SVN e quer uma ferramenta leve (um p
 
 - Histórico (aba **Histórico**) do projeto selecionado ou, sem seleção, de todos os projetos do filtro num log só (precisam ser do mesmo repositório). Vem 50 revisões por vez, com filtro por autor e por texto da mensagem, sem diferenciar maiúsculas nem acentos. A revisão mostra autor, data, mensagem e os caminhos alterados; cada caminho abre o diff do que a revisão mudou nele (renomeação e cópia comparam com a origem) ou a comparação daquela versão com o arquivo atual da working copy.
 - Histórico de arquivo, pelo botão **Histórico** no diff: segue as renomeações, inclusive de pasta.
+- Revert, pelo diff de um arquivo local ou dos itens marcados no painel de commit, com a lista final e os comandos antes de confirmar. Pasta adicionada, apagada ou faltando volta inteira, e a lista mostra o que vai junto. Arquivo adicionado deixa de ser versionado e fica no disco; arquivo não versionado não entra (o revert não apaga arquivos).
+- Cleanup (`svn cleanup`, sem apagar nada) do projeto selecionado ou dos projetos do filtro, para tirar as travas que ficam quando uma operação do svn é interrompida.
 - Grupos de projetos (um projeto pode estar em vários) para filtrar a tela.
 - Padrões de arquivos ignorados, globais ou por projeto. Ignorados aparecem recolhidos e nunca vão entrar em commit.
 - Modo somente leitura, ligado por padrão, com chaves separadas para operações locais e para commit. Com a chave ligada, o servidor recusa a operação.
 - Toda operação que grava mostra antes o comando svn exato e pede confirmação.
 - Console com todos os comandos svn que o app executou.
-
-Ainda não há revert nem cleanup. Eles vêm nas próximas etapas.
 
 ## Requisitos
 
@@ -57,6 +55,17 @@ google-chrome --app=http://127.0.0.1:4517
 ```
 
 Na primeira execução, configure as pastas raiz em **Configurações → Pastas raiz**.
+
+### Como serviço, com atalho no menu
+
+```bash
+pnpm build
+scripts/install-desktop.sh
+```
+
+Instala um serviço systemd do usuário, que sobe o servidor ao entrar na sessão, e o atalho **Gerenciador SVN** no menu de aplicativos. O atalho abre o app numa janela própria do Chrome (`google-chrome --app`) e sobe o serviço se ele não estiver no ar. `scripts/install-desktop.sh --print` mostra os arquivos antes de instalar; `--remove` desinstala.
+
+O serviço guarda o caminho do Node e da pasta do projeto: rode o script de novo depois de trocar a versão do Node ou mudar o projeto de pasta. Depois de atualizar o código (`git pull` e `pnpm build`), reinicie com `systemctl --user restart gerenciador-svn`.
 
 ## Desenvolvimento
 
@@ -86,6 +95,7 @@ Fica em `~/.config/gerenciador-svn/config.json` (ou `$XDG_CONFIG_HOME/gerenciado
     "projects": {}
   },
   "readOnly": { "local": true, "commit": true },
+  "remotePolling": true,
   "commitReferenceTemplate": "tarefa #{n}"
 }
 ```
@@ -112,10 +122,6 @@ Servem também para arquivos versionados, que o `svn:ignore` não cobre.
 - O servidor escuta só em `127.0.0.1`.
 - Recusa requisições com cabeçalho `Host` ou `Origin` diferentes do próprio app (proteção contra DNS rebinding e contra outros sites abertos no navegador) e não libera CORS.
 - O svn é sempre chamado com os argumentos em lista, sem shell, e só dentro das working copies descobertas.
-
-## Próximas etapas
-
-1. Revert, cleanup, consulta periódica ao servidor e inicialização pelo systemd.
 
 ## Licença
 
