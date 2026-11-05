@@ -5,9 +5,17 @@ import type {
   HistoryCompare,
   MergeChoice,
   ResolveAccept,
+  RevertRequest,
 } from './schema.ts';
 
-export type { CommitRequest, DiffCompare, HistoryCompare, MergeChoice, ResolveAccept };
+export type {
+  CommitRequest,
+  DiffCompare,
+  HistoryCompare,
+  MergeChoice,
+  ResolveAccept,
+  RevertRequest,
+};
 
 /** Valores de `wc-status/@item` do `svn status --xml`. */
 export type ItemStatus =
@@ -303,6 +311,33 @@ export interface CommitPreview {
   errors: string[];
   /** Identifica o plano: o commit só roda se o plano não mudou desde a prévia. */
   fingerprint: string;
+}
+
+export interface RevertItem extends Pick<
+  LocalChange,
+  'path' | 'kind' | 'item' | 'props' | 'treeConflict'
+> {
+  /** Veio junto com uma pasta marcada que volta inteira (adicionada, apagada ou faltando). */
+  included?: 'content';
+}
+
+export interface RevertPreviewProject {
+  projectId: string;
+  items: RevertItem[];
+}
+
+export interface RevertPreview {
+  projects: RevertPreviewProject[];
+  /** Comandos exatos, na ordem em que rodam. */
+  commands: string[];
+  /** Itens que não podem ser revertidos (sem mudança, não versionado). */
+  errors: string[];
+  /** O revert só roda se o plano não mudou desde a prévia. */
+  fingerprint: string;
+}
+
+export interface CleanupPreview {
+  commands: string[];
 }
 
 export interface CommandResult {

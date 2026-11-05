@@ -1,5 +1,6 @@
 import type { Group, IgnoreConfig, ReadOnlyConfig } from '@shared/schema.ts';
 import type {
+  CleanupPreview,
   CommandResult,
   CommitPreview,
   CommitRequest,
@@ -17,6 +18,8 @@ import type {
   ProjectsResponse,
   RemoteStatusResponse,
   ResolveAccept,
+  RevertPreview,
+  RevertRequest,
   StatusResponse,
   UpdatePreview,
 } from '@shared/types.ts';
@@ -79,6 +82,8 @@ export const api = {
   saveReadOnly: (readOnly: ReadOnlyConfig) => put<ConfigResponse>('/config/read-only', readOnly),
   saveCommitReferenceTemplate: (template: string) =>
     put<ConfigResponse>('/config/commit', { template }),
+  saveRemotePolling: (remotePolling: boolean) =>
+    put<ConfigResponse>('/config/polling', { remotePolling }),
   projects: () => request<ProjectsResponse>('/projects'),
   status: () => request<StatusResponse>('/status'),
   remoteStatus: () => request<RemoteStatusResponse>('/remote-status'),
@@ -118,6 +123,11 @@ export const api = {
   commitPreview: (commit: CommitRequest) => post<CommitPreview>('/commit/preview', commit),
   startCommit: (commit: CommitRequest, fingerprint: string) =>
     post<Operation>('/commit', { ...commit, fingerprint }),
+  revertPreview: (revert: RevertRequest) => post<RevertPreview>('/revert/preview', revert),
+  startRevert: (revert: RevertRequest, fingerprint: string) =>
+    post<Operation>('/revert', { ...revert, fingerprint }),
+  cleanupPreview: (projects: string[]) => post<CleanupPreview>('/cleanup/preview', { projects }),
+  startCleanup: (projects: string[]) => post<Operation>('/cleanup', { projects }),
   conflict: (project: string, path: string, force: boolean) =>
     request<ConflictDetails>(
       `/conflict?${new URLSearchParams({ project, path, force: force ? '1' : '0' })}`,

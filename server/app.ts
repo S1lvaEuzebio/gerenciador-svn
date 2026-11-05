@@ -12,8 +12,10 @@ import {
   mergeChoiceSchema,
   readOnlySchema,
   resolveAcceptSchema,
+  revertRequestSchema,
 } from '../shared/schema.ts';
 import type {
+  CleanupPreview,
   CommandResult,
   CommitPreview,
   ConfigResponse,
@@ -24,9 +26,11 @@ import type {
   Operation,
   ProjectsResponse,
   RemoteStatusResponse,
+  RevertPreview,
   StatusResponse,
   UpdatePreview,
 } from '../shared/types.ts';
+import { cleanupPreview, startCleanup } from './cleanup.ts';
 import { commitPreview, startCommit } from './commit.ts';
 import { cleanPatterns, configPath, getConfig, updateConfig } from './config.ts';
 import { conflictDetails, resolveConflict, saveMerge } from './conflicts.ts';
@@ -39,6 +43,7 @@ import { getOperation } from './operations.ts';
 import { discoverProjects, knownProjects, requireProject } from './projects.ts';
 import { requireUnlocked } from './read-only.ts';
 import { projectRemoteStatus } from './remote-status.ts';
+import { revertPreview, startRevert } from './revert.ts';
 import { localOnly } from './security.ts';
 import { startUpdate, updatePreview } from './update.ts';
 
@@ -83,6 +88,8 @@ const historyDiffQuery = z.object({
   local: z.string().optional(),
   force: z.enum(['0', '1']).optional(),
 });
+
+const projectsBody = z.object({ projects: z.array(z.string().min(1)).min(1) });
 
 const updateBody = z.object({
   targets: z.array(z.object({ projectId: z.string().min(1), revision: positiveInt })).min(1),
@@ -138,6 +145,12 @@ export function createApp(options: { port: number; dev: boolean }) {
 
   api.put('/config/read-only', async (req, res) => {
     await updateConfig({ readOnly: readOnlySchema.parse(req.body) });
+    res.json(configResponse());
+  });
+
+  api.put('/config/polling', async (req, res) => {
+    const { remotePolling } = z.object({ remotePolling: z.boolean() }).parse(req.body);
+    await updateConfig({ remotePolling });
     res.json(configResponse());
   });
 
@@ -201,7 +214,7 @@ export function createApp(options: { port: number; dev: boolean }) {
   });
 
   api.post('/update/preview', async (req, res) => {
-    const { projects: ids } = z.object({ projects: z.array(z.string()).min(1) }).parse(req.body);
+    const { projects: ids } = projectsBody.parse(req.body);
     const projects = await Promise.all(ids.map((id) => requireProject(id)));
     res.json((await updatePreview(projects, getConfig())) satisfies UpdatePreview);
   });
@@ -233,6 +246,30 @@ export function createApp(options: { port: number; dev: boolean }) {
     res
       .status(202)
       .json((await startCommit(request, getConfig(), fingerprint)) satisfies Operation);
+  });
+
+  api.post('/revert/preview', async (req, res) => {
+    const request = revertRequestSchema.parse(req.body);
+    res.json((await revertPreview(request)) satisfies RevertPreview);
+  });
+
+  api.post('/revert', requireUnlocked('local'), async (req, res) => {
+    const { fingerprint, ...request } = revertRequestSchema
+      .extend({ fingerprint: z.string().min(1) })
+      .parse(req.body);
+    res.status(202).json((await startRevert(request, fingerprint)) satisfies Operation);
+  });
+
+  api.post('/cleanup/preview', async (req, res) => {
+    const { projects: ids } = projectsBody.parse(req.body);
+    const projects = await Promise.all(ids.map((id) => requireProject(id)));
+    res.json(cleanupPreview(projects) satisfies CleanupPreview);
+  });
+
+  api.post('/cleanup', requireUnlocked('local'), async (req, res) => {
+    const { projects: ids } = projectsBody.parse(req.body);
+    const projects = await Promise.all(ids.map((id) => requireProject(id)));
+    res.status(202).json(startCleanup(projects) satisfies Operation);
   });
 
   api.get('/conflict', async (req, res) => {

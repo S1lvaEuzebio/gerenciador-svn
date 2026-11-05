@@ -8,6 +8,7 @@ import type {
   MergeChoice,
   Operation,
   ResolveAccept,
+  RevertRequest,
 } from '@shared/types.ts';
 import { api, type DiffRequest, type HistoryDiffRequest, type HistoryRequest } from './api';
 
@@ -23,6 +24,8 @@ export const keys = {
     ['conflict', project, path, force] as const,
   updatePreview: (projects: string[]) => ['update-preview', projects] as const,
   commitPreview: (commit: CommitRequest) => ['commit-preview', commit] as const,
+  revertPreview: (revert: RevertRequest) => ['revert-preview', revert] as const,
+  cleanupPreview: (projects: string[]) => ['cleanup-preview', projects] as const,
   operation: (id: number) => ['operation', id] as const,
   console: ['console'] as const,
 };
@@ -45,17 +48,23 @@ export function useStatus(enabled: boolean) {
   return useQuery({ queryKey: keys.status, queryFn: api.status, enabled });
 }
 
+/** Intervalo da consulta periódica ao servidor. */
+const REMOTE_POLL_MS = 10 * 60 * 1000;
+
 /**
  * O que vai chegar do servidor. Consulta a rede (~2 s por working copy, em paralelo), então
- * só roda ao abrir e pelo botão Recarregar; não refaz ao focar a janela.
+ * roda ao abrir, pelo botão Recarregar e, com `polling`, a cada 10 minutos (também com a
+ * janela em segundo plano, para o contador do título); não refaz ao focar a janela.
  */
-export function useRemoteStatus(enabled: boolean) {
+export function useRemoteStatus(enabled: boolean, polling: boolean) {
   return useQuery({
     queryKey: keys.remoteStatus,
     queryFn: api.remoteStatus,
     enabled,
     staleTime: Infinity,
     refetchOnWindowFocus: false,
+    refetchInterval: polling ? REMOTE_POLL_MS : false,
+    refetchIntervalInBackground: true,
   });
 }
 
@@ -118,6 +127,25 @@ export function useCommitPreview(commit: CommitRequest) {
   });
 }
 
+/** Prévia do revert: lista final e comandos. Refeita a cada abertura. */
+export function useRevertPreview(revert: RevertRequest) {
+  return useQuery({
+    queryKey: keys.revertPreview(revert),
+    queryFn: () => api.revertPreview(revert),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export function useCleanupPreview(projects: string[]) {
+  return useQuery({
+    queryKey: keys.cleanupPreview(projects),
+    queryFn: () => api.cleanupPreview(projects),
+    gcTime: 0,
+    refetchOnWindowFocus: false,
+  });
+}
+
 /** Acompanha uma operação de gravação até terminar. */
 export function useOperation(id: number | null) {
   return useQuery({
@@ -161,7 +189,7 @@ export function useRefreshAll() {
 }
 
 /**
- * Ciclo de uma operação de gravação nas janelas de update e commit: começa, acompanha a saída e,
+ * Ciclo de uma operação de gravação nas janelas de update, commit, revert e cleanup: começa, acompanha a saída e,
  * ao terminar, recarrega tudo e avisa se todas as etapas deram certo.
  */
 export function useOperationRun<T>(
@@ -252,6 +280,10 @@ export function useSaveIgnore() {
 
 export function useSaveReadOnly() {
   return useConfigMutation((readOnly: ReadOnlyConfig) => api.saveReadOnly(readOnly));
+}
+
+export function useSaveRemotePolling() {
+  return useConfigMutation((remotePolling: boolean) => api.saveRemotePolling(remotePolling));
 }
 
 export function useSaveCommitReferenceTemplate() {

@@ -3,6 +3,7 @@ import type { AppConfig } from '../shared/schema.ts';
 import type { LocalChange, NodeKind, Project, ProjectStatus } from '../shared/types.ts';
 import { projectIgnoreMatcher } from './ignore.ts';
 import { relativeToProject } from './projects.ts';
+import { svnInfo } from './svn/info.ts';
 import { svnStatus, type StatusEntry } from './svn/status.ts';
 
 export async function nodeKind(path: string): Promise<NodeKind> {
@@ -12,6 +13,16 @@ export async function nodeKind(path: string): Promise<NodeKind> {
   } catch {
     return 'unknown';
   }
+}
+
+/** Tipo do nó; apagado ou faltando no disco, vem do svn. */
+export async function versionedKind(path: string): Promise<NodeKind> {
+  const onDisk = await nodeKind(path);
+  if (onDisk !== 'unknown') return onDisk;
+  return svnInfo(path).then(
+    (info) => info.kind,
+    () => onDisk,
+  );
 }
 
 /** Entradas que o `svn status` lista mas que não são mudança (ex.: externals). */

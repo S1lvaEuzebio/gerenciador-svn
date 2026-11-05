@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readdir } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import type { AppConfig } from '../shared/schema.ts';
@@ -15,10 +14,10 @@ import type {
 import { isConflicted, isPropsOnly } from '../shared/status.ts';
 import { HttpError } from './http-error.ts';
 import { projectIgnoreMatcher } from './ignore.ts';
-import { isChange, nodeKind } from './local-status.ts';
-import { startOperation, type StepSpec } from './operations.ts';
+import { isChange, nodeKind, versionedKind } from './local-status.ts';
+import { planFingerprint, startOperation, type StepSpec } from './operations.ts';
 import { relativeToProject, requireProject, resolveInProject } from './projects.ts';
-import { svnInfo, svnTree } from './svn/info.ts';
+import { svnTree } from './svn/info.ts';
 import { localTarget, svnCommandLine } from './svn/run.ts';
 import { svnRemoteStatus, svnStatus, type StatusEntry } from './svn/status.ts';
 
@@ -113,15 +112,7 @@ async function planProject(
       errors.push(`${label(path)}: o estado "${entry.item}" não pode ser comitado`);
       continue;
     }
-    // Item apagado ou faltando não existe mais no disco: o tipo vem do svn.
-    const onDisk = await nodeKind(absolute);
-    const kind =
-      onDisk !== 'unknown'
-        ? onDisk
-        : await svnInfo(absolute).then(
-            (info) => info.kind,
-            () => onDisk,
-          );
+    const kind = await versionedKind(absolute);
     add({ path, kind, action });
 
     if (action === 'to-add' && kind === 'dir') {
@@ -260,7 +251,7 @@ async function buildPlan(
     })),
     commands,
     errors,
-    fingerprint: createHash('sha256').update(commands.join('\n')).digest('hex'),
+    fingerprint: planFingerprint(commands),
     specs,
   };
 }

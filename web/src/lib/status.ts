@@ -37,7 +37,9 @@ const TREE_CONFLICT: StatusLabel = {
   className: 'text-red-600 dark:text-red-400 font-bold',
 };
 
-export function statusLabel(change: LocalChange): StatusLabel {
+export function statusLabel(
+  change: Pick<LocalChange, 'item' | 'props' | 'treeConflict'>,
+): StatusLabel {
   if (change.treeConflict) return TREE_CONFLICT;
   const item = ITEM_LABELS[change.item];
   if (item) return item;
@@ -50,6 +52,11 @@ export const isConflict = (change: LocalChange): boolean => isConflicted(change)
 /** Pode ser marcado para o commit: ignorado nunca entra, conflito precisa ser resolvido antes. */
 export function isCommittable(change: LocalChange): boolean {
   return !change.ignored && !isConflict(change);
+}
+
+/** Pode ser revertido: o revert não mexe em arquivo não versionado (nem o apaga). */
+export function isRevertable(change: LocalChange): boolean {
+  return change.item !== 'unversioned';
 }
 
 /** Chave de um item na seleção do commit. */

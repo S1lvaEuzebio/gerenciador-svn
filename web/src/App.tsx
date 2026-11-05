@@ -4,6 +4,7 @@ import type { ReadOnlyConfig } from '@shared/schema.ts';
 import type {
   CommitRequest,
   HistoryFilters,
+  RevertRequest,
   Project,
   ProjectRemoteStatus,
   ProjectStatus,
@@ -11,6 +12,7 @@ import type {
 import { useIsFetching } from '@tanstack/react-query';
 import {
   ArrowDownToLine,
+  BrushCleaning,
   FolderCog,
   History,
   Lock,
@@ -19,6 +21,7 @@ import {
   SquareTerminal,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { CleanupDialog } from '@/components/CleanupDialog';
 import { CommitDialog } from '@/components/CommitDialog';
 import { CommitPanel } from '@/components/CommitPanel';
 import { ConflictPanel } from '@/components/ConflictPanel';
@@ -28,6 +31,7 @@ import { FileList, type FileTab } from '@/components/FileList';
 import { GroupsDialog } from '@/components/GroupsDialog';
 import { HistoryList, type HistoryFile } from '@/components/HistoryList';
 import { Placeholder } from '@/components/Placeholder';
+import { RevertDialog } from '@/components/RevertDialog';
 import { RevisionPanel, type RevisionSelection } from '@/components/RevisionPanel';
 import { SettingsDialog, type SettingsTab } from '@/components/SettingsDialog';
 import { ALL, Sidebar, UNGROUPED, type GroupFilter } from '@/components/Sidebar';
@@ -43,8 +47,9 @@ import {
 } from '@/lib/queries';
 import { useCommitMessage } from '@/lib/commit-message';
 import { useCommitSelection } from '@/lib/commit-selection';
-import { isConflict } from '@/lib/status';
+import { isConflict, isRevertable } from '@/lib/status';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
+import { useNewsBadge } from '@/lib/use-news-badge';
 import { useStoredState } from '@/lib/use-stored-state';
 import { cn, projectCount } from '@/lib/utils';
 
@@ -56,7 +61,7 @@ export function App() {
   const config = useConfig();
   const projects = useProjects();
   const status = useStatus(projects.isSuccess);
-  const remote = useRemoteStatus(projects.isSuccess);
+  const remote = useRemoteStatus(projects.isSuccess, config.data?.config.remotePolling ?? false);
   const refreshAll = useRefreshAll();
   const refreshing =
     useIsFetching({ queryKey: keys.status }) +
@@ -78,6 +83,9 @@ export function App() {
   const appliedFilters = useDebouncedValue(historyFilters, 400);
   const [revision, setRevision] = useState<RevisionSelection | null>(null);
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [cleanupOpen, setCleanupOpen] = useState(false);
+  /** Pedido do revert em confirmação, copiado no clique como o do commit. */
+  const [revertRequest, setRevertRequest] = useState<RevertRequest | null>(null);
   /** Update pedido pelo commit (itens desatualizados), no lugar do escopo da tela. */
   const [updateTargets, setUpdateTargets] = useState<Project[] | null>(null);
   /** Pedido do commit em confirmação, copiado no clique para a prévia não mudar com a lista. */
@@ -157,8 +165,15 @@ export function App() {
     ? allProjects.filter((p) => p.id === historyFile.projectId)
     : listedProjects;
 
+  // Revert vale para mudança local de item versionado (inclusive ignorado).
+  const canRevert = selectedChange !== undefined && isRevertable(selectedChange);
+  const incomingTotal = [...remoteStatuses.values()].reduce((sum, s) => sum + s.incoming.length, 0);
+  useNewsBadge(incomingTotal);
+
   const unlockLocal = () => {
     setUpdateOpen(false);
+    setCleanupOpen(false);
+    setRevertRequest(null);
     openSettings('read-only');
   };
 
@@ -202,6 +217,16 @@ export function App() {
           {incomingInScope > 0 && (
             <span className="bg-primary-foreground/20 rounded px-1 text-xs">{incomingInScope}</span>
           )}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setCleanupOpen(true)}
+          disabled={noRoots || listedProjects.length === 0}
+          title={`Cleanup: ${scopeLabel}. Tira travas que ficam de uma operação interrompida.`}
+        >
+          <BrushCleaning />
+          Cleanup
         </Button>
         <Button
           variant={consoleOpen ? 'secondary' : 'ghost'}
@@ -312,6 +337,13 @@ export function App() {
                     message: draft.message,
                   })
                 }
+                onRevert={() =>
+                  setRevertRequest({
+                    items: commitSelection.items
+                      .filter(({ change }) => isRevertable(change))
+                      .map(({ project, change }) => ({ projectId: project.id, path: change.path })),
+                  })
+                }
               />
             </div>
             {fileTab === 'history' ? (
@@ -354,6 +386,14 @@ export function App() {
                         })
                     : undefined
                 }
+                onRevert={
+                  canRevert && selection
+                    ? () =>
+                        setRevertRequest({
+                          items: [{ projectId: selection.projectId, path: selection.path }],
+                        })
+                    : undefined
+                }
               />
             )}
           </div>
@@ -387,6 +427,24 @@ export function App() {
           projects={updateTargets ?? listedProjects}
           locked={readOnly?.local ?? true}
           onUnlock={unlockLocal}
+        />
+      )}
+      {cleanupOpen && (
+        <CleanupDialog
+          scopeLabel={scopeLabel}
+          projects={listedProjects}
+          locked={readOnly?.local ?? true}
+          onUnlock={unlockLocal}
+          onClose={() => setCleanupOpen(false)}
+        />
+      )}
+      {revertRequest && (
+        <RevertDialog
+          request={revertRequest}
+          projects={allProjects}
+          locked={readOnly?.local ?? true}
+          onUnlock={unlockLocal}
+          onClose={() => setRevertRequest(null)}
         />
       )}
       {commitRequest && (

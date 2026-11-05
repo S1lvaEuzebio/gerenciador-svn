@@ -1,11 +1,11 @@
 import type { Project } from '@shared/types.ts';
-import { GitCommitHorizontal, X } from 'lucide-react';
+import { GitCommitHorizontal, Undo2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import type { useCommitMessage } from '@/lib/commit-message';
 import type { CheckedItem } from '@/lib/commit-selection';
-import { displayPath, statusLabel } from '@/lib/status';
+import { displayPath, isRevertable, statusLabel } from '@/lib/status';
 import { cn, firstLine } from '@/lib/utils';
 
 interface CommitPanelProps {
@@ -15,10 +15,19 @@ interface CommitPanelProps {
   draft: ReturnType<typeof useCommitMessage>;
   onUncheck: (keys: string[]) => void;
   onCommit: () => void;
+  /** Reverte os itens marcados (com confirmação). */
+  onRevert: () => void;
 }
 
 /** Painel fixo embaixo da lista: o que está marcado para o commit, por projeto, e a mensagem. */
-export function CommitPanel({ items, template, draft, onUncheck, onCommit }: CommitPanelProps) {
+export function CommitPanel({
+  items,
+  template,
+  draft,
+  onUncheck,
+  onCommit,
+  onRevert,
+}: CommitPanelProps) {
   const byProject = new Map<Project, CheckedItem[]>();
   for (const item of items)
     byProject.set(item.project, [...(byProject.get(item.project) ?? []), item]);
@@ -113,8 +122,18 @@ export function CommitPanel({ items, template, draft, onUncheck, onCommit }: Com
           </select>
         )}
         <Button
+          variant="ghost"
           size="sm"
           className="ml-auto"
+          onClick={onRevert}
+          disabled={!items.some((i) => isRevertable(i.change))}
+          title="Desfaz as mudanças locais dos itens marcados (com confirmação); não versionados ficam de fora"
+        >
+          <Undo2 />
+          Reverter…
+        </Button>
+        <Button
+          size="sm"
           onClick={onCommit}
           disabled={items.length === 0 || draft.message === ''}
           title={draft.message === '' ? 'Escreva a mensagem ou a referência' : undefined}
