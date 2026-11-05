@@ -4,10 +4,10 @@ import type { ReadOnlyConfig } from '@shared/schema.ts';
 import type {
   CommitRequest,
   HistoryFilters,
-  RevertRequest,
   Project,
   ProjectRemoteStatus,
   ProjectStatus,
+  RevertRequest,
 } from '@shared/types.ts';
 import { useIsFetching } from '@tanstack/react-query';
 import {
@@ -49,7 +49,7 @@ import { useCommitMessage } from '@/lib/commit-message';
 import { useCommitSelection } from '@/lib/commit-selection';
 import { isConflict, isRevertable } from '@/lib/status';
 import { useDebouncedValue } from '@/lib/use-debounced-value';
-import { useNewsBadge } from '@/lib/use-news-badge';
+import { useIncomingBadge } from '@/lib/use-incoming-badge';
 import { useStoredState } from '@/lib/use-stored-state';
 import { cn, projectCount } from '@/lib/utils';
 
@@ -168,7 +168,7 @@ export function App() {
   // Revert vale para mudança local de item versionado (inclusive ignorado).
   const canRevert = selectedChange !== undefined && isRevertable(selectedChange);
   const incomingTotal = [...remoteStatuses.values()].reduce((sum, s) => sum + s.incoming.length, 0);
-  useNewsBadge(incomingTotal);
+  useIncomingBadge(incomingTotal);
 
   const unlockLocal = () => {
     setUpdateOpen(false);
@@ -339,9 +339,10 @@ export function App() {
                 }
                 onRevert={() =>
                   setRevertRequest({
-                    items: commitSelection.items
-                      .filter(({ change }) => isRevertable(change))
-                      .map(({ project, change }) => ({ projectId: project.id, path: change.path })),
+                    items: commitSelection.items.map(({ project, change }) => ({
+                      projectId: project.id,
+                      path: change.path,
+                    })),
                   })
                 }
               />

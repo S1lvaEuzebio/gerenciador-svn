@@ -1,6 +1,5 @@
 import type { Project } from '@shared/types.ts';
 import { Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +11,7 @@ import { api } from '@/lib/api';
 import { useCleanupPreview, useOperationRun } from '@/lib/queries';
 import { projectCount } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
-import { OperationProgress } from './OperationProgress';
+import { OperationActions, OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
 
 interface CleanupDialogProps {
@@ -37,10 +36,7 @@ export function CleanupDialog({
 }: CleanupDialogProps) {
   const ids = projects.map((p) => p.id);
   const preview = useCleanupPreview(ids);
-  const run = useOperationRun(
-    () => api.startCleanup(ids),
-    () => {},
-  );
+  const run = useOperationRun<void>(() => api.startCleanup(ids));
 
   return (
     <Dialog open onOpenChange={(next) => !next && !run.busy && onClose()}>
@@ -75,25 +71,13 @@ export function CleanupDialog({
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          {!run.started ? (
-            <>
-              <Button variant="outline" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={() => run.start(undefined)}
-                disabled={!preview.data || locked || run.starting}
-              >
-                {run.starting ? 'Iniciando…' : `Fazer cleanup (${projectCount(projects.length)})`}
-              </Button>
-            </>
-          ) : (
-            <Button onClick={onClose} disabled={run.busy}>
-              Fechar
-            </Button>
-          )}
-        </div>
+        <OperationActions
+          run={run}
+          onClose={onClose}
+          confirmLabel={`Fazer cleanup (${projectCount(projects.length)})`}
+          confirmDisabled={!preview.data || locked}
+          onConfirm={() => run.start()}
+        />
       </DialogContent>
     </Dialog>
   );

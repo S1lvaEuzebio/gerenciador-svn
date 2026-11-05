@@ -107,42 +107,42 @@ export function useConflict(project: string, path: string, force: boolean) {
   });
 }
 
-/** Prévia sempre nova: refeita cada vez que a tela de update abre. */
+/** Prévias de operações de gravação: sempre novas, refeitas a cada abertura da janela. */
+const PREVIEW = { gcTime: 0, refetchOnWindowFocus: false } as const;
+
+/** Prévia do update: revisões, arquivos e comandos. */
 export function useUpdatePreview(projects: string[]) {
   return useQuery({
     queryKey: keys.updatePreview(projects),
     queryFn: () => api.updatePreview(projects),
-    gcTime: 0,
-    refetchOnWindowFocus: false,
+    ...PREVIEW,
   });
 }
 
-/** Prévia do commit: lista final, desatualizados e comandos. Refeita a cada abertura. */
+/** Prévia do commit: lista final, desatualizados e comandos. */
 export function useCommitPreview(commit: CommitRequest) {
   return useQuery({
     queryKey: keys.commitPreview(commit),
     queryFn: () => api.commitPreview(commit),
-    gcTime: 0,
-    refetchOnWindowFocus: false,
+    ...PREVIEW,
   });
 }
 
-/** Prévia do revert: lista final e comandos. Refeita a cada abertura. */
+/** Prévia do revert: lista final, o que fica de fora e comandos. */
 export function useRevertPreview(revert: RevertRequest) {
   return useQuery({
     queryKey: keys.revertPreview(revert),
     queryFn: () => api.revertPreview(revert),
-    gcTime: 0,
-    refetchOnWindowFocus: false,
+    ...PREVIEW,
   });
 }
 
+/** Prévia do cleanup: os comandos de cada projeto. */
 export function useCleanupPreview(projects: string[]) {
   return useQuery({
     queryKey: keys.cleanupPreview(projects),
     queryFn: () => api.cleanupPreview(projects),
-    gcTime: 0,
-    refetchOnWindowFocus: false,
+    ...PREVIEW,
   });
 }
 
@@ -189,12 +189,12 @@ export function useRefreshAll() {
 }
 
 /**
- * Ciclo de uma operação de gravação nas janelas de update, commit, revert e cleanup: começa, acompanha a saída e,
- * ao terminar, recarrega tudo e avisa se todas as etapas deram certo.
+ * Ciclo de uma operação de gravação nas janelas de update, commit, revert e cleanup: começa,
+ * acompanha a saída e, ao terminar, recarrega tudo e avisa se todas as etapas deram certo.
  */
 export function useOperationRun<T>(
   start: (args: T) => Promise<Operation>,
-  onDone: (succeeded: boolean) => void,
+  onDone?: (succeeded: boolean) => void,
 ) {
   const [operationId, setOperationId] = useState<number | null>(null);
   const operation = useOperation(operationId);
@@ -204,7 +204,7 @@ export function useOperationRun<T>(
 
   const refreshAll = useRefreshAll();
   const finish = useEffectEvent(() => {
-    onDone(succeeded);
+    onDone?.(succeeded);
     void refreshAll();
   });
   useEffect(() => {

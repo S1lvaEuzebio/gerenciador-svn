@@ -330,8 +330,10 @@ export interface RevertPreview {
   projects: RevertPreviewProject[];
   /** Comandos exatos, na ordem em que rodam. */
   commands: string[];
-  /** Itens que não podem ser revertidos (sem mudança, não versionado). */
+  /** Itens que impedem o revert (ex.: sem mudança). */
   errors: string[];
+  /** Ficam de fora sem impedir o resto: não versionados (o revert não apaga arquivos). */
+  skipped: string[];
   /** O revert só roda se o plano não mudou desde a prévia. */
   fingerprint: string;
 }

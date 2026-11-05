@@ -1,6 +1,7 @@
 import type { Operation, OperationStep, Project } from '@shared/types.ts';
 import { CheckCircle2, Circle, CircleSlash, Loader2, XCircle } from 'lucide-react';
 import { useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Placeholder } from './Placeholder';
 
@@ -67,6 +68,50 @@ export function OperationProgress({
         <p className={cn('text-sm', failed ? 'text-destructive' : 'text-muted-foreground')}>
           {failed ? 'Terminou com falha. Veja a saída acima.' : doneMessage}
         </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Rodapé das janelas de operação: Cancelar e confirmar antes de rodar; depois, Fechar, que só
+ * libera quando o svn termina.
+ */
+export function OperationActions({
+  run,
+  onClose,
+  confirmLabel,
+  confirmDisabled,
+  destructive = false,
+  onConfirm,
+}: {
+  run: { started: boolean; starting: boolean; busy: boolean };
+  onClose: () => void;
+  confirmLabel: string;
+  confirmDisabled: boolean;
+  /** Descarta mudanças (revert): botão vermelho. */
+  destructive?: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="flex justify-end gap-2">
+      {!run.started ? (
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            variant={destructive ? 'destructive' : 'default'}
+            onClick={onConfirm}
+            disabled={confirmDisabled || run.starting}
+          >
+            {run.starting ? 'Iniciando…' : confirmLabel}
+          </Button>
+        </>
+      ) : (
+        <Button onClick={onClose} disabled={run.busy}>
+          Fechar
+        </Button>
       )}
     </div>
   );

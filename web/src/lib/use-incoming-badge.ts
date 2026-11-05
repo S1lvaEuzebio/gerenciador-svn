@@ -17,10 +17,10 @@ function badgeIcon(count: number): string {
 }
 
 /**
- * Novidades do servidor no título da janela e no ícone (sem notificação do sistema). Na janela
- * do `google-chrome --app`, os dois aparecem também na barra de tarefas.
+ * Quantas mudanças vão chegar do servidor, no título da janela e no ícone da página (sem
+ * notificação do sistema). O ícone do dock vem do atalho e não muda.
  */
-export function useNewsBadge(count: number) {
+export function useIncomingBadge(count: number) {
   useEffect(() => {
     document.title = count > 0 ? `(${count}) ${TITLE}` : TITLE;
     const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');

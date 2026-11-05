@@ -40,7 +40,7 @@ import { historyDiff, historyLog } from './history.ts';
 import { HttpError } from './http-error.ts';
 import { projectStatus } from './local-status.ts';
 import { getOperation } from './operations.ts';
-import { discoverProjects, knownProjects, requireProject } from './projects.ts';
+import { discoverProjects, knownProjects, requireProject, requireProjects } from './projects.ts';
 import { requireUnlocked } from './read-only.ts';
 import { projectRemoteStatus } from './remote-status.ts';
 import { revertPreview, startRevert } from './revert.ts';
@@ -193,7 +193,7 @@ export function createApp(options: { port: number; dev: boolean }) {
 
   api.get('/history', async (req, res) => {
     const query = historyQuery.parse(req.query);
-    const scope = await Promise.all(query.project.map((id) => requireProject(id)));
+    const scope = await requireProjects(query.project);
     const cursor = query.before ? { before: query.before, path: query.beforePath ?? null } : null;
     const page = await historyLog(scope, query.file ?? null, cursor, query);
     res.json(page satisfies LogPage);
@@ -215,7 +215,7 @@ export function createApp(options: { port: number; dev: boolean }) {
 
   api.post('/update/preview', async (req, res) => {
     const { projects: ids } = projectsBody.parse(req.body);
-    const projects = await Promise.all(ids.map((id) => requireProject(id)));
+    const projects = await requireProjects(ids);
     res.json((await updatePreview(projects, getConfig())) satisfies UpdatePreview);
   });
 
@@ -262,13 +262,13 @@ export function createApp(options: { port: number; dev: boolean }) {
 
   api.post('/cleanup/preview', async (req, res) => {
     const { projects: ids } = projectsBody.parse(req.body);
-    const projects = await Promise.all(ids.map((id) => requireProject(id)));
+    const projects = await requireProjects(ids);
     res.json(cleanupPreview(projects) satisfies CleanupPreview);
   });
 
   api.post('/cleanup', requireUnlocked('local'), async (req, res) => {
     const { projects: ids } = projectsBody.parse(req.body);
-    const projects = await Promise.all(ids.map((id) => requireProject(id)));
+    const projects = await requireProjects(ids);
     res.status(202).json(startCleanup(projects) satisfies Operation);
   });
 

@@ -1,7 +1,7 @@
 import { isConflicted } from '@shared/status.ts';
 import type { ChangeAction, CommitAction, IncomingChange, LocalChange } from '@shared/types.ts';
 
-export { isPropsOnly } from '@shared/status.ts';
+export { isPropsOnly, isRevertable } from '@shared/status.ts';
 
 export interface StatusLabel {
   letter: string;
@@ -52,11 +52,6 @@ export const isConflict = (change: LocalChange): boolean => isConflicted(change)
 /** Pode ser marcado para o commit: ignorado nunca entra, conflito precisa ser resolvido antes. */
 export function isCommittable(change: LocalChange): boolean {
   return !change.ignored && !isConflict(change);
-}
-
-/** Pode ser revertido: o revert não mexe em arquivo não versionado (nem o apaga). */
-export function isRevertable(change: LocalChange): boolean {
-  return change.item !== 'unversioned';
 }
 
 /** Chave de um item na seleção do commit. */

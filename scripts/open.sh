@@ -8,12 +8,14 @@ PORT="${GERENCIADOR_SVN_PORT:-}"
 if [[ -z "$PORT" && -f "$CONFIG" ]]; then
   PORT="$(grep -o '"port": *[0-9]*' "$CONFIG" | grep -o '[0-9]*$' || true)"
 fi
-URL="http://127.0.0.1:${PORT:-4517}"
+# Mesma porta padrão do servidor (DEFAULT_PORT em shared/schema.ts).
+PORT="${PORT:-4517}"
+URL="http://127.0.0.1:$PORT"
 
 systemctl --user start gerenciador-svn.service
 # Espera o servidor aceitar conexão (até ~10 s) para a janela não abrir numa página de erro.
 for _ in $(seq 50); do
-  if (exec 3<> "/dev/tcp/127.0.0.1/${PORT:-4517}") 2> /dev/null; then break; fi
+  if (exec 3<> "/dev/tcp/127.0.0.1/$PORT") 2> /dev/null; then break; fi
   sleep 0.2
 done
 

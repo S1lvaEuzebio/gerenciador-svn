@@ -10,6 +10,7 @@ function cleanupArgs(project: Project): string[] {
   return ['cleanup', localTarget(project.id)];
 }
 
+/** Comandos exatos do cleanup, para a confirmação. */
 export function cleanupPreview(projects: Project[]): CleanupPreview {
   return { commands: projects.map((p) => svnCommandLine(cleanupArgs(p))) };
 }

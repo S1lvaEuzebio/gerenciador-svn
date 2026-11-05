@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { Operation, OperationStep } from '../shared/types.ts';
 import { HttpError } from './http-error.ts';
 import { runSvnRaw, svnCommandLine } from './svn/run.ts';
@@ -82,14 +81,6 @@ export function startOperation(
     operation.done = true;
   });
   return operation;
-}
-
-/**
- * Identifica um plano pelos comandos que ele roda. A execução refaz o plano e só segue se a
- * impressão for a mesma da prévia: nada roda sem ter aparecido na confirmação.
- */
-export function planFingerprint(commands: string[]): string {
-  return createHash('sha256').update(commands.join('\n')).digest('hex');
 }
 
 export function getOperation(id: number): Operation {

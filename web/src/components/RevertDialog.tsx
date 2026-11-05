@@ -1,6 +1,5 @@
 import type { Project, RevertItem, RevertRequest } from '@shared/types.ts';
 import { AlertTriangle, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -13,7 +12,7 @@ import { useOperationRun, useRevertPreview } from '@/lib/queries';
 import { displayPath, statusLabel } from '@/lib/status';
 import { cn } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
-import { OperationProgress } from './OperationProgress';
+import { OperationActions, OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
 
 function ItemRow({ item }: { item: RevertItem }) {
@@ -57,10 +56,7 @@ interface RevertDialogProps {
  */
 export function RevertDialog({ request, projects, locked, onUnlock, onClose }: RevertDialogProps) {
   const preview = useRevertPreview(request);
-  const run = useOperationRun(
-    (fingerprint: string) => api.startRevert(request, fingerprint),
-    () => {},
-  );
+  const run = useOperationRun((fingerprint: string) => api.startRevert(request, fingerprint));
 
   const byId = new Map(projects.map((p) => [p.id, p]));
   const data = preview.data;
@@ -118,6 +114,12 @@ export function RevertDialog({ request, projects, locked, onUnlock, onClose }: R
                 </ul>
               </div>
             ))}
+            {data!.skipped.length > 0 && (
+              <p className="text-muted-foreground text-sm">
+                Ficam de fora, porque o revert não apaga arquivos não versionados:{' '}
+                {data!.skipped.join(', ')}
+              </p>
+            )}
             {data!.errors.length > 0 && (
               <ul className="text-destructive list-disc space-y-0.5 pl-5 text-sm">
                 {data!.errors.map((error) => (
@@ -131,28 +133,14 @@ export function RevertDialog({ request, projects, locked, onUnlock, onClose }: R
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          {!run.started ? (
-            <>
-              <Button variant="outline" onClick={onClose}>
-                Cancelar
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => run.start(data!.fingerprint)}
-                disabled={blocked || run.starting}
-              >
-                {run.starting
-                  ? 'Iniciando…'
-                  : `Reverter (${total} ${total === 1 ? 'item' : 'itens'})`}
-              </Button>
-            </>
-          ) : (
-            <Button onClick={onClose} disabled={run.busy}>
-              Fechar
-            </Button>
-          )}
-        </div>
+        <OperationActions
+          run={run}
+          onClose={onClose}
+          confirmLabel={`Reverter (${total} ${total === 1 ? 'item' : 'itens'})`}
+          confirmDisabled={blocked}
+          destructive
+          onConfirm={() => run.start(data!.fingerprint)}
+        />
       </DialogContent>
     </Dialog>
   );

@@ -1,7 +1,6 @@
 import type { Project, UpdatePreviewProject } from '@shared/types.ts';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import type { ReactNode } from 'react';
-import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -14,7 +13,7 @@ import { useOperationRun, useUpdatePreview } from '@/lib/queries';
 import { displayPath, incomingLabel } from '@/lib/status';
 import { cn, firstLine, formatDate, projectCount } from '@/lib/utils';
 import { CommandBlock, LockNotice } from './ConfirmDialog';
-import { OperationProgress } from './OperationProgress';
+import { OperationActions, OperationProgress } from './OperationProgress';
 import { Placeholder } from './Placeholder';
 
 interface UpdateDialogProps {
@@ -110,7 +109,7 @@ export function UpdateDialog({
 }: UpdateDialogProps) {
   const preview = useUpdatePreview(projects.map((p) => p.id));
   // Ao terminar, o hook recarrega projetos (revisão), status local e o que ainda falta chegar.
-  const run = useOperationRun(api.startUpdate, () => {});
+  const run = useOperationRun(api.startUpdate);
 
   const items = preview.data?.projects ?? [];
   const withChanges = items.filter((i) => i.command !== null);
@@ -176,25 +175,13 @@ export function UpdateDialog({
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
-          {!run.started ? (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
-                Cancelar
-              </Button>
-              <Button
-                onClick={confirm}
-                disabled={withChanges.length === 0 || locked || run.starting}
-              >
-                {run.starting ? 'Iniciando…' : `Fazer update (${projectCount(withChanges.length)})`}
-              </Button>
-            </>
-          ) : (
-            <Button onClick={() => onOpenChange(false)} disabled={run.busy}>
-              Fechar
-            </Button>
-          )}
-        </div>
+        <OperationActions
+          run={run}
+          onClose={() => onOpenChange(false)}
+          confirmLabel={`Fazer update (${projectCount(withChanges.length)})`}
+          confirmDisabled={withChanges.length === 0 || locked}
+          onConfirm={confirm}
+        />
       </DialogContent>
     </Dialog>
   );
